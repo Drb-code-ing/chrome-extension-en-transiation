@@ -36,6 +36,6 @@ export default defineManifest({
     page: 'src/panel/options.html',
     open_in_tab: true,
   },
-  permissions: ['activeTab', 'scripting', 'storage'],
+  permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
   host_permissions: ['https://dashscope.aliyuncs.com/*'],
 });

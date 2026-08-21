@@ -69,6 +69,33 @@ function toTranslateError(error: unknown): TranslateError {
   };
 }
 
+/** 由文章标题生成安全的文件名（去非法字符、压缩空白与连字符）。 */
+function safeFilename(title: string): string {
+  const normalized = title
+    .trim()
+    .replace(/[\\/:*?"<>|\n\r]+/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || 'translation';
+}
+
+/** 将 Markdown 文本下载为 .md 文件（使用 downloads 权限）。 */
+async function downloadMarkdown(content: string, title: string, suffix: string): Promise<void> {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  try {
+    await chrome.downloads.download({
+      url,
+      filename: `${safeFilename(title)}${suffix}.md`,
+      saveAs: false,
+    });
+  } finally {
+    // 下载已发起后释放对象 URL。
+    URL.revokeObjectURL(url);
+  }
+}
+
 const App: React.FC = () => {
   const [viewState, setViewState] = useState<ViewState>('idle');
 
@@ -82,6 +109,9 @@ const App: React.FC = () => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewArticle, setPreviewArticle] = useState<ExtractedArticle | null>(null);
   const [extractError, setExtractError] = useState<ExtractError | null>(null);
+
+  // ---- 当前翻译的文章（T7：供下载原文 / 打开原文使用）----
+  const [currentArticle, setCurrentArticle] = useState<ExtractedArticle | null>(null);
 
   // ---- 翻译（T4）----
   const translate = useThrottledMarkdown(200);
@@ -175,6 +205,7 @@ const App: React.FC = () => {
         throw { code: 'AUTH_FAILED', message: '尚未配置 API Key，请回到初始页填写后再试。' } satisfies TranslateError;
       }
       const article = await requestExtract();
+      setCurrentArticle(article);
       const requestId = crypto.randomUUID();
       const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
 
@@ -356,8 +387,27 @@ const App: React.FC = () => {
               <span className="success-mark" aria-hidden="true">✓</span>
             </div>
             <div className="action-row">
-              <button type="button" className="button button--secondary">下载译文</button>
-              <button type="button" className="button button--secondary">下载原文</button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  void downloadMarkdown(translate.text, currentArticle?.title ?? '译文', '-译文');
+                }}
+              >
+                下载译文
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  if (!currentArticle) {
+                    return;
+                  }
+                  void downloadMarkdown(currentArticle.markdown, currentArticle.title, '-原文');
+                }}
+              >
+                下载原文
+              </button>
             </div>
             <div className="translation-preview translation-preview--complete">
               <MarkdownRenderer
@@ -373,7 +423,18 @@ const App: React.FC = () => {
             </div>
             <div className="bottom-actions">
               <button type="button" className="text-button" onClick={() => setViewState('idle')}>重新翻译</button>
-              <button type="button" className="button button--primary button--compact">打开原文</button>
+              <button
+                type="button"
+                className="button button--primary button--compact"
+                onClick={() => {
+                  if (!currentArticle?.url) {
+                    return;
+                  }
+                  void chrome.tabs.create({ url: currentArticle.url });
+                }}
+              >
+                打开原文
+              </button>
             </div>
           </section>
         );
