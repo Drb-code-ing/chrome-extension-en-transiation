@@ -301,6 +301,10 @@ const App: React.FC = () => {
         return '翻译服务未授权';
       case 'RATE_LIMITED':
         return '请求过于频繁';
+      case 'NETWORK_ERROR':
+        return '网络连接异常';
+      case 'EMPTY_RESPONSE':
+        return '模型未返回翻译内容';
       default:
         return '翻译未完成';
     }
