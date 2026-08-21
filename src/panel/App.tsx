@@ -9,11 +9,17 @@ import {
   type TranslatePortMessage,
   type TranslateStartRequest,
 } from '@/shared/messages/index.ts';
-import { loadSettings, saveSettings } from '@/shared/storage/index.ts';
+import {
+  loadLastResult,
+  loadSettings,
+  saveLastResult,
+  saveSettings,
+} from '@/shared/storage/index.ts';
 import type {
   AppSettings,
   ExtractedArticle,
   ExtractError,
+  LastResult,
   TranslateError,
 } from '@/shared/types/index.ts';
 import { useThrottledMarkdown } from './hooks/useThrottledMarkdown.ts';
@@ -81,6 +87,9 @@ const App: React.FC = () => {
   const translate = useThrottledMarkdown(200);
   const [translateError, setTranslateError] = useState<TranslateError | null>(null);
 
+  // ---- 最近一次结果持久化（T6）----
+  const [lastResult, setLastResult] = useState<LastResult | null>(null);
+
   // 初次打开：读取活动标签页信息与本地设置。
   useEffect(() => {
     chrome.tabs
@@ -99,8 +108,12 @@ const App: React.FC = () => {
         // activeTab 读取失败时保持空信息，不阻断后续流程。
       });
 
-    loadSettings()
-      .then((loaded) => setSettings(loaded))
+    // 并发读取本地设置与最近一次翻译结果（T6）。
+    Promise.all([loadSettings(), loadLastResult()])
+      .then(([loaded, last]) => {
+        setSettings(loaded);
+        setLastResult(last);
+      })
       .catch(() => setSettings(null));
   }, []);
 
@@ -174,6 +187,16 @@ const App: React.FC = () => {
           translate.push(msg.delta);
         } else if (msg.type === MESSAGE_TYPES.translateDone && msg.requestId === requestId) {
           translate.commitNow();
+          // 仅成功完成后写入最近一次结果并覆盖旧值（T6）。
+          const result: LastResult = {
+            title: article.title,
+            author: article.author,
+            url: article.url,
+            translatedMarkdown: msg.fullText,
+            savedAt: Date.now(),
+          };
+          void saveLastResult(result);
+          setLastResult(result);
           setViewState('success');
           port.disconnect();
         } else if (msg.type === MESSAGE_TYPES.translateError && msg.requestId === requestId) {
@@ -245,6 +268,47 @@ const App: React.FC = () => {
       default:
         return '翻译未完成';
     }
+  };
+
+  // 最近一次结果面板（T6）：初始状态存在最近结果时优先展示。
+  const renderLastResultPanel = () => {
+    if (!lastResult) {
+      return null;
+    }
+    return (
+      <section className="state-panel state-panel--last">
+        <div className="last-result-head">
+          <div>
+            <p className="eyebrow eyebrow--success">最近一次翻译结果</p>
+            <h2 className="last-result-title">{lastResult.title}</h2>
+          </div>
+        </div>
+        <div className="last-result-meta">
+          <span>作者：{lastResult.author || '未知'}</span>
+          <span className="last-result-meta__url">{lastResult.url}</span>
+          <span>保存时间：{new Date(lastResult.savedAt).toLocaleString()}</span>
+        </div>
+        <div className="translation-preview last-result-body">
+          <MarkdownRenderer
+            markdown={lastResult.translatedMarkdown}
+            theme="minimal"
+            showSettings={false}
+            enableCopy={false}
+            enableThemeSwitch={false}
+            enableViewModeToggle={false}
+            followSystemTheme
+            className="md-wx-wrap"
+          />
+        </div>
+        <button
+          type="button"
+          className="button button--primary button--large"
+          onClick={handleTranslate}
+        >
+          翻译当前页面
+        </button>
+      </section>
+    );
   };
 
   const renderContent = () => {
@@ -326,6 +390,10 @@ const App: React.FC = () => {
         );
       case 'idle':
       default:
+        // T6：存在最近一次结果时优先展示结果与重新翻译入口。
+        if (lastResult) {
+          return renderLastResultPanel();
+        }
         return (
           <section className="state-panel state-panel--idle">
             <div>

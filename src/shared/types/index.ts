@@ -38,6 +38,20 @@ export interface TranslateError {
   message: string;
 }
 
+/** 最近一次翻译结果（存储于 chrome.storage.local，仅保留最新一条）。 */
+export interface LastResult {
+  /** 文章标题。 */
+  title: string;
+  /** 文章作者，缺失时为空字符串。 */
+  author: string;
+  /** 原文 URL。 */
+  url: string;
+  /** 翻译后的完整 Markdown（可直接渲染展示）。 */
+  translatedMarkdown: string;
+  /** 保存时间戳（毫秒）。 */
+  savedAt: number;
+}
+
 /** 用户可配置的翻译设置（存储于 chrome.storage.local）。 */
 export interface AppSettings {
   /** OpenAI 兼容服务基地址。 */

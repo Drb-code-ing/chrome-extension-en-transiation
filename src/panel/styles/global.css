@@ -486,6 +486,45 @@ body {
   animation: blink 800ms step-end infinite;
 }
 
+/* ---- 最近一次结果面板（T6）---- */
+.state-panel--last {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 16px;
+}
+
+.state-panel--last .last-result-title {
+  max-width: 100%;
+  color: var(--ink);
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 20px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.last-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 11px 13px;
+  background: rgba(255, 254, 249, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.last-result-meta__url {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.last-result-body {
+  max-height: 300px;
+}
+
 .supporting-text {
   margin-top: 12px;
   color: var(--muted);
