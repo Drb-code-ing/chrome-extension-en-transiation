@@ -350,6 +350,49 @@ body {
   color: var(--accent);
 }
 
+.last-result-entry {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--accent-dark);
+  text-align: left;
+  background: rgba(229, 240, 233, 0.58);
+  border: 1px solid #cfdfd6;
+  border-radius: var(--radius-sm);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.last-result-entry:hover {
+  background: var(--accent-soft);
+  border-color: #a9c7b7;
+}
+
+.last-result-entry:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.last-result-entry span {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.last-result-entry small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .extract-actions {
   display: flex;
   justify-content: center;
@@ -416,6 +459,11 @@ body {
 
 .preview-panel__head h2 {
   overflow-wrap: anywhere;
+}
+
+.preview-back {
+  flex: 0 0 auto;
+  min-width: 104px;
 }
 
 .preview-meta,
@@ -518,6 +566,34 @@ body {
 .last-result-head {
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
+}
+
+.result-head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.result-head > div {
+  min-width: 0;
+}
+
+.result-head__action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.result-head__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-head__actions .button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .state-panel--last .last-result-title {
@@ -660,9 +736,35 @@ body {
   }
 
   .action-row,
-  .bottom-actions {
+  .bottom-actions,
+  .result-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .result-head__action,
+  .preview-back {
+    width: 100%;
+  }
+
+  .result-head__actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .result-head__actions .button {
+    width: 100%;
+  }
+
+  .last-result-entry {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .last-result-entry small {
+    width: 100%;
   }
 
   .bottom-actions .text-button {

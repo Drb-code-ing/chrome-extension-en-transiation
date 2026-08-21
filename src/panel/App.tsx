@@ -110,9 +110,15 @@ const App: React.FC = () => {
   const [translateError, setTranslateError] = useState<TranslateError | null>(null);
   const translatingRef = useRef(false);
   const activePortRef = useRef<chrome.runtime.Port | null>(null);
+  const autoFollowRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
 
   // ---- 最近一次结果持久化（T6）----
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
+  const [showLastResult, setShowLastResult] = useState(true);
+  const lastResultRef = useRef<LastResult | null>(null);
+  const bodyRef = useRef<HTMLElement | null>(null);
+  const activeUrlRef = useRef('');
 
   // ---- 渲染偏好（T8：由设置页读取，缺省为默认值）----
   const mdTheme = settings?.theme ?? 'minimal';
@@ -129,32 +135,90 @@ const App: React.FC = () => {
     [],
   );
 
-  // 初次打开：读取活动标签页信息与本地设置。
-  useEffect(() => {
-    chrome.tabs
-      .query({ active: true, currentWindow: true })
-      .then((tabs) => {
-        const tab = tabs[0];
-        // #region debug-point A:initial-active-tab
-        void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'A', location: 'src/panel/App.tsx:initial-tab-query', msg: '[DEBUG] Side Panel 初次查询活动标签页', data: { count: tabs.length, id: tab?.id, url: tab?.url, pendingUrl: tab?.pendingUrl, title: tab?.title, windowId: tab?.windowId }, ts: Date.now() }) }).catch(() => {});
-        // #endregion
-        if (!tab) {
-          return;
-        }
-        setTabInfo({
-          title: tab.title ?? '',
-          url: (tab.url || tab.pendingUrl || '').trim(),
-        });
-      })
-      .catch(() => {
-        // activeTab 读取失败时保持空信息，不阻断后续流程。
-      });
+  const scrollToTop = useCallback((): void => {
+    window.requestAnimationFrame(() => {
+      bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }, []);
 
-    // 并发读取本地设置与最近一次翻译结果（T6）。
+  const stopAutoFollow = useCallback((): void => {
+    if (translatingRef.current && !programmaticScrollRef.current) {
+      autoFollowRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (viewState !== 'translating' || !autoFollowRef.current) {
+      return;
+    }
+    const body = bodyRef.current;
+    if (!body) {
+      return;
+    }
+    programmaticScrollRef.current = true;
+    window.requestAnimationFrame(() => {
+      body.scrollTo({ top: body.scrollHeight, behavior: 'auto' });
+      window.requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
+    });
+  }, [translate.text, viewState]);
+
+  const syncActiveTab = useCallback((tab: chrome.tabs.Tab): void => {
+    const nextUrl = (tab.url || tab.pendingUrl || '').trim();
+    const previousUrl = activeUrlRef.current;
+    activeUrlRef.current = nextUrl;
+    setTabInfo({ title: tab.title ?? '', url: nextUrl });
+
+    if (previousUrl && nextUrl && previousUrl !== nextUrl && !translatingRef.current) {
+      setShowLastResult(lastResultRef.current?.url === nextUrl);
+      setPreviewOpen(false);
+      setPreviewArticle(null);
+      setExtractError(null);
+      setTranslateError(null);
+      setViewState('idle');
+      scrollToTop();
+    }
+  }, [scrollToTop]);
+
+  // 初次打开及活动页面变化时，同步当前网页并提供新的翻译入口。
+  useEffect(() => {
+    const queryActiveTab = (): void => {
+      void chrome.tabs
+        .query({ active: true, currentWindow: true })
+        .then(([tab]) => {
+          if (tab) {
+            syncActiveTab(tab);
+          }
+        })
+        .catch(() => {
+          // 标签页读取失败时保留现有信息，不阻断翻译流程。
+        });
+    };
+    const handleActivated = (): void => queryActiveTab();
+    const handleUpdated = (_tabId: number, changeInfo: { url?: string; status?: string }, tab: chrome.tabs.Tab): void => {
+      if (tab.active && (changeInfo.url !== undefined || changeInfo.status === 'complete')) {
+        queryActiveTab();
+      }
+    };
+
+    queryActiveTab();
+    chrome.tabs.onActivated.addListener(handleActivated);
+    chrome.tabs.onUpdated.addListener(handleUpdated);
+    return () => {
+      chrome.tabs.onActivated.removeListener(handleActivated);
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+    };
+  }, [syncActiveTab]);
+
+  // 初次打开时读取本地设置与最近一次翻译结果。
+  useEffect(() => {
     Promise.all([loadSettings(), loadLastResult()])
       .then(([loaded, last]) => {
         setSettings(loaded);
+        lastResultRef.current = last;
         setLastResult(last);
+        setShowLastResult(Boolean(last && last.url === activeUrlRef.current));
       })
       .catch(() => setSettings(null));
   }, []);
@@ -169,9 +233,6 @@ const App: React.FC = () => {
       return (await chrome.tabs.sendMessage(tabId, request)) as ExtractArticleResponse | undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // #region debug-point C:content-message-failure
-      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'C', location: 'src/panel/App.tsx:sendExtractRequest', msg: '[DEBUG] 向内容脚本发送提取请求失败', data: { tabId, allowInjection, message }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       const missingReceiver = /Receiving end does not exist|Could not establish connection/i.test(message);
       if (!allowInjection || !missingReceiver) {
         throw error;
@@ -190,17 +251,11 @@ const App: React.FC = () => {
   const requestExtract = useCallback(async (): Promise<ExtractedArticle> => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs[0];
-    // #region debug-point A:extract-active-tab
-    void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'A', location: 'src/panel/App.tsx:requestExtract', msg: '[DEBUG] 翻译前查询活动标签页', data: { count: tabs.length, id: tab?.id, url: tab?.url, pendingUrl: tab?.pendingUrl, title: tab?.title, windowId: tab?.windowId }, ts: Date.now() }) }).catch(() => {});
-    // #endregion
     if (!tab?.id) {
       throw { code: 'EXTRACT_FAILED', message: '未找到可提取的活动标签页。' } satisfies ExtractError;
     }
     const url = (tab.url || tab.pendingUrl || '').trim();
     if (!/^https?:\/\//i.test(url)) {
-      // #region debug-point B:restricted-url-branch
-      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'B', location: 'src/panel/App.tsx:restricted-url-branch', msg: '[DEBUG] 活动标签页被判定为受限页面', data: { id: tab.id, url, rawUrl: tab.url, pendingUrl: tab.pendingUrl }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       throw {
         code: 'EXTRACT_FAILED',
         message: '当前页面属于浏览器受限页面，请打开普通网页后重试。',
@@ -225,13 +280,14 @@ const App: React.FC = () => {
       setPreviewArticle(article);
       setPreviewOpen(true);
       setExtractError(null);
+      scrollToTop();
     } catch (error) {
       setExtractError(toExtractError(error));
       setPreviewOpen(false);
     } finally {
       setIsExtracting(false);
     }
-  }, [requestExtract]);
+  }, [requestExtract, scrollToTop]);
 
   // 一键翻译：提取请求后经端口发起流式翻译，逐块追加展示。
   const handleTranslate = useCallback(async () => {
@@ -239,6 +295,10 @@ const App: React.FC = () => {
       return;
     }
     translatingRef.current = true;
+    autoFollowRef.current = true;
+    programmaticScrollRef.current = false;
+    setShowLastResult(false);
+    scrollToTop();
     setTranslateError(null);
     setExtractError(null);
     setCompletedMarkdown('');
@@ -281,6 +341,7 @@ const App: React.FC = () => {
             savedAt: Date.now(),
           };
           void saveLastResult(result);
+          lastResultRef.current = result;
           setLastResult(result);
           setViewState('success');
           port.disconnect();
@@ -321,19 +382,7 @@ const App: React.FC = () => {
       }
       setViewState('error');
     }
-  }, [settings?.apiKey, requestExtract, translate]);
-
-  // #region debug-point B:success-render-state
-  useEffect(() => {
-    if (viewState !== 'success') {
-      return;
-    }
-    window.setTimeout(() => {
-      const preview = document.querySelector('.translation-preview--complete');
-      void fetch('http://127.0.0.1:7778/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-result-blank', runId: 'post-fix', hypothesisId: 'B', location: 'src/panel/App.tsx:success-render', msg: '[DEBUG] 修复后成功页渲染状态', data: { completedMarkdownLength: completedMarkdown.length, streamedTextLength: translate.text.length, previewTextLength: preview?.textContent?.length ?? 0, previewHtmlLength: preview?.innerHTML.length ?? 0 }, ts: Date.now() }) }).catch(() => {});
-    }, 0);
-  }, [completedMarkdown, translate.text, viewState]);
-  // #endregion
+  }, [settings?.apiKey, requestExtract, scrollToTop, translate]);
 
   // 当前要展示的错误信息（翻译优先，其次提取）。
   const activeError = translateError ?? (previewOpen ? null : extractError);
@@ -345,24 +394,27 @@ const App: React.FC = () => {
     }
     return (
       <section className="preview-panel">
-        <div className="preview-panel__head">
+        <div className="preview-panel__head result-head">
           <div>
             <p className="eyebrow">原文提取</p>
             <h2>{previewArticle.title}</h2>
           </div>
+          <button
+            type="button"
+            className="button button--secondary button--compact preview-back"
+            onClick={() => {
+              setPreviewOpen(false);
+              scrollToTop();
+            }}
+          >
+            返回翻译页
+          </button>
         </div>
         <div className="preview-meta">
           <span className="preview-meta__author">作者：{previewArticle.author || '未知'}</span>
           <span className="preview-meta__url">{previewArticle.url}</span>
         </div>
         <pre className="preview-markdown">{previewArticle.markdown}</pre>
-        <button
-          type="button"
-          className="button button--primary button--large"
-          onClick={() => setPreviewOpen(false)}
-        >
-          返回初始状态
-        </button>
       </section>
     );
   };
@@ -395,10 +447,31 @@ const App: React.FC = () => {
     }
     return (
       <section className="state-panel state-panel--last">
-        <div className="last-result-head">
+        <div className="last-result-head result-head">
           <div>
             <p className="eyebrow eyebrow--success">最近一次翻译结果</p>
             <h2 className="last-result-title">{lastResult.title}</h2>
+          </div>
+          <div className="result-head__actions">
+            <button
+              type="button"
+              className="button button--secondary button--compact"
+              onClick={() => {
+                setShowLastResult(false);
+                scrollToTop();
+              }}
+            >
+              返回当前页面
+            </button>
+            {lastResult.url !== tabInfo.url && (
+              <button
+                type="button"
+                className="button button--primary button--compact"
+                onClick={handleTranslate}
+              >
+                翻译当前页面
+              </button>
+            )}
           </div>
         </div>
         <div className="last-result-meta">
@@ -419,13 +492,6 @@ const App: React.FC = () => {
             className="md-wx-wrap"
           />
         </div>
-        <button
-          type="button"
-          className="button button--primary button--large"
-          onClick={handleTranslate}
-        >
-          翻译当前页面
-        </button>
       </section>
     );
   };
@@ -468,12 +534,20 @@ const App: React.FC = () => {
       case 'success':
         return (
           <section className="state-panel state-panel--success">
-            <div className="status-heading">
+            <div className="status-heading result-head">
               <div>
                 <p className="eyebrow eyebrow--success">翻译完成</p>
                 <h2>译文已准备好</h2>
               </div>
-              <span className="success-mark" aria-hidden="true">✓</span>
+              {currentArticle?.url !== tabInfo.url && (
+                <button
+                  type="button"
+                  className="button button--primary button--compact result-head__action"
+                  onClick={handleTranslate}
+                >
+                  翻译当前页面
+                </button>
+              )}
             </div>
             <div className="action-row">
               <button
@@ -516,8 +590,9 @@ const App: React.FC = () => {
                 type="button"
                 className="text-button"
                 onClick={() => {
-                  setLastResult(null);
+                  setShowLastResult(false);
                   setViewState('idle');
+                  scrollToTop();
                 }}
               >
                 重新翻译
@@ -561,8 +636,8 @@ const App: React.FC = () => {
         );
       case 'idle':
       default:
-        // T6：存在最近一次结果时优先展示结果与重新翻译入口。
-        if (lastResult) {
+        // 当前页面与最近结果一致时恢复译文；新页面优先展示翻译入口。
+        if (lastResult && showLastResult) {
           return renderLastResultPanel();
         }
         return (
@@ -579,6 +654,19 @@ const App: React.FC = () => {
               </div>
             </div>
             <button type="button" className="button button--primary button--large" onClick={handleTranslate}>一键翻译当前文章</button>
+            {lastResult && !showLastResult && (
+              <button
+                type="button"
+                className="last-result-entry"
+                onClick={() => {
+                  setShowLastResult(true);
+                  scrollToTop();
+                }}
+              >
+                <span>查看上次译文</span>
+                <small>{lastResult.title}</small>
+              </button>
+            )}
             <div className="extract-actions">
               <button
                 type="button"
@@ -615,7 +703,16 @@ const App: React.FC = () => {
         </div>
         <button type="button" className="icon-button" aria-label="打开设置" title="打开设置" onClick={() => void chrome.runtime.openOptionsPage()}>⚙</button>
       </header>
-      <main className="side-panel__body">{previewOpen ? renderPreview() : renderContent()}</main>
+      <main
+        ref={bodyRef}
+        className="side-panel__body"
+        onWheel={stopAutoFollow}
+        onTouchMove={stopAutoFollow}
+        onPointerDown={stopAutoFollow}
+        onKeyDown={stopAutoFollow}
+      >
+        {previewOpen ? renderPreview() : renderContent()}
+      </main>
     </div>
   );
 };
