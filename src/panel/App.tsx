@@ -270,6 +270,7 @@ const App: React.FC = () => {
           translate.push(msg.delta);
         } else if (msg.type === MESSAGE_TYPES.translateDone && msg.requestId === requestId) {
           finish();
+          setCompletedMarkdown(msg.fullText);
           translate.commitNow();
           // 仅成功完成后写入最近一次结果并覆盖旧值（T6）。
           const result: LastResult = {
@@ -321,6 +322,18 @@ const App: React.FC = () => {
       setViewState('error');
     }
   }, [settings?.apiKey, requestExtract, translate]);
+
+  // #region debug-point B:success-render-state
+  useEffect(() => {
+    if (viewState !== 'success') {
+      return;
+    }
+    window.setTimeout(() => {
+      const preview = document.querySelector('.translation-preview--complete');
+      void fetch('http://127.0.0.1:7778/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-result-blank', runId: 'post-fix', hypothesisId: 'B', location: 'src/panel/App.tsx:success-render', msg: '[DEBUG] 修复后成功页渲染状态', data: { completedMarkdownLength: completedMarkdown.length, streamedTextLength: translate.text.length, previewTextLength: preview?.textContent?.length ?? 0, previewHtmlLength: preview?.innerHTML.length ?? 0 }, ts: Date.now() }) }).catch(() => {});
+    }, 0);
+  }, [completedMarkdown, translate.text, viewState]);
+  // #endregion
 
   // 当前要展示的错误信息（翻译优先，其次提取）。
   const activeError = translateError ?? (previewOpen ? null : extractError);
