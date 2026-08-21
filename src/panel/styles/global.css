@@ -241,6 +241,147 @@ body {
   line-height: 1.5;
 }
 
+.extract-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.extract-actions .text-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.extract-error {
+  padding: 9px 12px;
+  color: var(--error);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  background: #f6e5df;
+  border: 1px solid #eccdc4;
+  border-radius: 10px;
+}
+
+.plain-translation {
+  color: #313c37;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-wx-wrap {
+  width: 100%;
+}
+
+.md-wx-wrap img {
+  max-width: 100%;
+  height: auto;
+}
+
+.md-wx-wrap pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.api-key-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.api-key-box__label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.api-key-box__row {
+  display: flex;
+  gap: 8px;
+}
+
+.api-key-box__row .button--secondary {
+  flex: 0 0 auto;
+}
+
+.api-key-box__input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.api-key-box__input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.api-key-box__hint {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 14px;
+}
+
+.preview-panel__head h2 {
+  color: var(--ink);
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 21px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 13px;
+  background: rgba(255, 254, 249, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.preview-meta span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.preview-meta__author {
+  color: var(--ink);
+}
+
+.preview-markdown {
+  flex: 1;
+  min-height: 0;
+  max-height: 360px;
+  padding: 14px;
+  overflow: auto;
+  color: #313c37;
+  font-family: "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(35, 49, 43, 0.06);
+}
+
 .feature-list li::marker {
   color: var(--accent);
 }

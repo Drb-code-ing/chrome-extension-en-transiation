@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Relative URLs in Web Performance</title>
+  <meta name="author" content="Jane Doe">
+  <meta property="og:title" content="Relative URLs in Web Performance">
+</head>
+<body>
+  <nav>
+    <ul>
+      <li><a href="/home">Home</a></li>
+      <li><a href="/about">About</a></li>
+    </ul>
+  </nav>
+  <main>
+    <article>
+      <h1>Relative URLs in Web Performance</h1>
+      <p class="byline">By Jane Doe</p>
+      <p>
+        Relative URLs let browsers resolve asset paths against the current page location,
+        which keeps deployments portable across staging and production. This article
+        explains how to reason about them safely.
+      </p>
+      <img src="images/hero.png" alt="Hero image">
+      <h2>Why base paths matter</h2>
+      <p>
+        Every resource address is resolved against <code>baseURI</code>. When a page is
+        served from a subdirectory, naive relative links can silently break.
+      </p>
+      <ul>
+        <li>Use absolute paths for critical assets.</li>
+        <li>Keep <code>loading="lazy"</code> images with a real fallback source.</li>
+      </ul>
+      <blockquote>
+        <p>A stable URL is a contract between the author and the reader.</p>
+      </blockquote>
+      <img data-src="image/flow.png" alt="Flow diagram">
+      <h2>Sample table</h2>
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Resolution</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Relative</td><td>baseURI + path</td></tr>
+        </tbody>
+      </table>
+      <pre><code>const abs = new URL("image/flow.png", document.baseURI).href;</code></pre>
+      <p>This is the final paragraph ensuring enough text volume for extraction.</p>
+    </article>
+  </main>
+</body>
+</html>

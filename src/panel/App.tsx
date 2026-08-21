@@ -1,4 +1,22 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { MarkdownRenderer } from 'md-wx';
+import 'md-wx/dist/style.css';
+import {
+  MESSAGE_TYPES,
+  TRANSLATE_PORT,
+  type ExtractArticleRequest,
+  type ExtractArticleResponse,
+  type TranslatePortMessage,
+  type TranslateStartRequest,
+} from '@/shared/messages/index.ts';
+import { loadSettings, saveSettings } from '@/shared/storage/index.ts';
+import type {
+  AppSettings,
+  ExtractedArticle,
+  ExtractError,
+  TranslateError,
+} from '@/shared/types/index.ts';
+import { useThrottledMarkdown } from './hooks/useThrottledMarkdown.ts';
 
 type ViewState = 'idle' | 'translating' | 'success' | 'error';
 
@@ -9,21 +27,225 @@ const VIEW_LABELS: Record<ViewState, string> = {
   error: '失败',
 };
 
-const ResultPreview: React.FC = () => (
-  <article className="result-preview">
-    <h1>让复杂的技术文章更容易阅读</h1>
-    <blockquote>
-      <p><strong>作者：</strong>Alex Morgan</p>
-      <p><strong>原文链接：</strong>https://example.com/article</p>
-    </blockquote>
-    <p>优秀的翻译不只是替换词语，还应保留文章的结构、语气与阅读节奏。</p>
-    <h2>从清晰的结构开始</h2>
-    <p>标题、列表、引用与图片都会按照原文顺序呈现，让长文依然易于浏览。</p>
-  </article>
-);
+interface TabInfo {
+  title: string;
+  url: string;
+}
+
+/** 将任意异常规范化为 ExtractError。 */
+function toExtractError(error: unknown): ExtractError {
+  if (
+    error &&
+    typeof error === 'object' &&
+    typeof (error as ExtractError).code === 'string'
+  ) {
+    return error as ExtractError;
+  }
+  return {
+    code: 'EXTRACT_FAILED',
+    message: error instanceof Error ? error.message : '文章提取过程出现异常',
+  };
+}
+
+/** 将任意异常规范化为 TranslateError。 */
+function toTranslateError(error: unknown): TranslateError {
+  if (
+    error &&
+    typeof error === 'object' &&
+    typeof (error as TranslateError).code === 'string' &&
+    typeof (error as TranslateError).message === 'string'
+  ) {
+    return error as TranslateError;
+  }
+  return {
+    code: 'UNKNOWN',
+    message: error instanceof Error ? error.message : '翻译过程出现未知错误',
+  };
+}
 
 const App: React.FC = () => {
   const [viewState, setViewState] = useState<ViewState>('idle');
+
+  // ---- 标签页信息与设置 ----
+  const [tabInfo, setTabInfo] = useState<TabInfo>({ title: '', url: '' });
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+
+  // ---- 提取（T3）----
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewArticle, setPreviewArticle] = useState<ExtractedArticle | null>(null);
+  const [extractError, setExtractError] = useState<ExtractError | null>(null);
+
+  // ---- 翻译（T4）----
+  const translate = useThrottledMarkdown(200);
+  const [translateError, setTranslateError] = useState<TranslateError | null>(null);
+
+  // 初次打开：读取活动标签页信息与本地设置。
+  useEffect(() => {
+    chrome.tabs
+      .query({ active: true, currentWindow: true })
+      .then((tabs) => {
+        const tab = tabs[0];
+        if (!tab) {
+          return;
+        }
+        setTabInfo({
+          title: tab.title ?? '',
+          url: (tab.url || tab.pendingUrl || '').trim(),
+        });
+      })
+      .catch(() => {
+        // activeTab 读取失败时保持空信息，不阻断后续流程。
+      });
+
+    loadSettings()
+      .then((loaded) => setSettings(loaded))
+      .catch(() => setSettings(null));
+  }, []);
+
+  /** 向当前活动标签页请求提取文章，返回文章对象。 */
+  const requestExtract = useCallback(async (): Promise<ExtractedArticle> => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    if (!tab?.id) {
+      throw new Error('未找到可提取的活动标签页');
+    }
+    const request: ExtractArticleRequest = { type: MESSAGE_TYPES.extractArticle };
+    const response = (await chrome.tabs.sendMessage(tab.id, request)) as
+      | ExtractArticleResponse
+      | undefined;
+    if (!response) {
+      throw new Error('未收到页面响应，请确认页面已加载完成');
+    }
+    if (!response.ok) {
+      throw response.error;
+    }
+    return response.article;
+  }, []);
+
+  // 提取预览（T3）。
+  const handleExtract = useCallback(async () => {
+    setIsExtracting(true);
+    setExtractError(null);
+    try {
+      const article = await requestExtract();
+      setPreviewArticle(article);
+      setPreviewOpen(true);
+      setExtractError(null);
+    } catch (error) {
+      setExtractError(toExtractError(error));
+      setPreviewOpen(false);
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [requestExtract]);
+
+  // 保存临时 API Key（T8 提供正式设置页）。
+  const handleSaveApiKey = useCallback(async () => {
+    if (!settings) {
+      return;
+    }
+    const next: AppSettings = { ...settings, apiKey: apiKeyInput.trim() };
+    await saveSettings(next);
+    setSettings(next);
+    setApiKeyInput('');
+  }, [settings, apiKeyInput]);
+
+  // 一键翻译：提取请求后经端口发起流式翻译，逐块追加展示。
+  const handleTranslate = useCallback(async () => {
+    setTranslateError(null);
+    translate.reset();
+    setViewState('translating');
+    try {
+      if (!settings?.apiKey) {
+        throw { code: 'AUTH_FAILED', message: '尚未配置 API Key，请回到初始页填写后再试。' } satisfies TranslateError;
+      }
+      const article = await requestExtract();
+      const requestId = crypto.randomUUID();
+      const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
+
+      port.onMessage.addListener((message: unknown) => {
+        if (!message || typeof message !== 'object') {
+          return;
+        }
+        const msg = message as TranslatePortMessage;
+        if (msg.type === MESSAGE_TYPES.translateDelta && msg.requestId === requestId) {
+          translate.push(msg.delta);
+        } else if (msg.type === MESSAGE_TYPES.translateDone && msg.requestId === requestId) {
+          translate.commitNow();
+          setViewState('success');
+          port.disconnect();
+        } else if (msg.type === MESSAGE_TYPES.translateError && msg.requestId === requestId) {
+          setTranslateError(msg.error);
+          setViewState('error');
+          port.disconnect();
+        }
+      });
+
+      const start: TranslateStartRequest = {
+        type: MESSAGE_TYPES.translateStart,
+        requestId,
+        markdown: article.markdown,
+        title: article.title,
+        author: article.author,
+        url: article.url,
+      };
+      port.postMessage(start);
+    } catch (error) {
+      setTranslateError(toTranslateError(error));
+      setViewState('error');
+    }
+  }, [settings?.apiKey, requestExtract, translate]);
+
+  // 当前要展示的错误信息（翻译优先，其次提取）。
+  const activeError = translateError ?? (previewOpen ? null : extractError);
+
+  // 原文 Markdown 预览面板。
+  const renderPreview = () => {
+    if (!previewArticle) {
+      return null;
+    }
+    return (
+      <section className="preview-panel">
+        <div className="preview-panel__head">
+          <div>
+            <p className="eyebrow">原文提取</p>
+            <h2>{previewArticle.title}</h2>
+          </div>
+        </div>
+        <div className="preview-meta">
+          <span className="preview-meta__author">作者：{previewArticle.author || '未知'}</span>
+          <span className="preview-meta__url">{previewArticle.url}</span>
+        </div>
+        <pre className="preview-markdown">{previewArticle.markdown}</pre>
+        <button
+          type="button"
+          className="button button--primary button--large"
+          onClick={() => setPreviewOpen(false)}
+        >
+          返回初始状态
+        </button>
+      </section>
+    );
+  };
+
+  const renderErrorTitle = (): string => {
+    if (!activeError) {
+      return '无法提取当前页面的主要文章内容';
+    }
+    switch (activeError.code) {
+      case 'EXTRACT_EMPTY':
+      case 'EXTRACT_FAILED':
+        return '无法提取当前页面的主要文章内容';
+      case 'AUTH_FAILED':
+        return '翻译服务未授权';
+      case 'RATE_LIMITED':
+        return '请求过于频繁';
+      default:
+        return '翻译未完成';
+    }
+  };
 
   const renderContent = () => {
     switch (viewState) {
@@ -34,16 +256,27 @@ const App: React.FC = () => {
               <span className="spinner" aria-hidden="true" />
               <div>
                 <p className="eyebrow">正在翻译</p>
-                <h2>正在整理文章内容…</h2>
+                <h2>正在翻译文章…</h2>
               </div>
-              <span className="status-value">62%</span>
-            </div>
-            <div className="progress-track" aria-label="模拟翻译进度 62%">
-              <span style={{ width: '62%' }} />
             </div>
             <div className="translation-preview">
-              <ResultPreview />
-              <span className="typing-caret" aria-hidden="true" />
+              {translate.text ? (
+                <>
+                  <MarkdownRenderer
+                    markdown={translate.text}
+                    theme="minimal"
+                    showSettings={false}
+                    enableCopy={false}
+                    enableThemeSwitch={false}
+                    enableViewModeToggle={false}
+                    followSystemTheme
+                    className="md-wx-wrap"
+                  />
+                  <span className="typing-caret" aria-hidden="true" />
+                </>
+              ) : (
+                <pre className="plain-translation">正在建立连接…</pre>
+              )}
             </div>
             <p className="supporting-text">译文会随模型返回持续追加，请稍候。</p>
           </section>
@@ -63,10 +296,19 @@ const App: React.FC = () => {
               <button type="button" className="button button--secondary">下载原文</button>
             </div>
             <div className="translation-preview translation-preview--complete">
-              <ResultPreview />
+              <MarkdownRenderer
+                markdown={translate.text}
+                theme="minimal"
+                showSettings={false}
+                enableCopy={false}
+                enableThemeSwitch={false}
+                enableViewModeToggle={false}
+                followSystemTheme
+                className="md-wx-wrap"
+              />
             </div>
             <div className="bottom-actions">
-              <button type="button" className="text-button" onClick={() => setViewState('translating')}>重新翻译</button>
+              <button type="button" className="text-button" onClick={() => setViewState('idle')}>重新翻译</button>
               <button type="button" className="button button--primary button--compact">打开原文</button>
             </div>
           </section>
@@ -76,9 +318,9 @@ const App: React.FC = () => {
           <section className="state-panel state-panel--error">
             <span className="error-symbol" aria-hidden="true">!</span>
             <p className="eyebrow eyebrow--error">翻译未完成</p>
-            <h2>无法提取当前页面的主要文章内容</h2>
-            <p className="error-message">请确认当前页面是可阅读的文章页面，然后重新尝试。</p>
-            <button type="button" className="button button--primary" onClick={() => setViewState('translating')}>重新尝试</button>
+            <h2>{renderErrorTitle()}</h2>
+            {activeError && <p className="error-message">{activeError.message}</p>}
+            <button type="button" className="button button--primary" onClick={() => setViewState('idle')}>返回重试</button>
             <p className="supporting-text">已有的最近一次成功结果不会被覆盖。</p>
           </section>
         );
@@ -93,11 +335,44 @@ const App: React.FC = () => {
             <div className="page-card">
               <span className="page-card__icon" aria-hidden="true">EN</span>
               <div className="page-card__content">
-                <strong>How AI Is Changing the Way We Read</strong>
-                <span>example.com/article</span>
+                <strong>{tabInfo.title || '当前页面'}</strong>
+                <span>{tabInfo.url || '正在识别当前页面地址…'}</span>
               </div>
             </div>
-            <button type="button" className="button button--primary button--large" onClick={() => setViewState('translating')}>一键翻译当前文章</button>
+            <button type="button" className="button button--primary button--large" onClick={handleTranslate}>一键翻译当前文章</button>
+            {settings && !settings.apiKey && (
+              <div className="api-key-box">
+                <label className="api-key-box__label">API Key（临时）</label>
+                <div className="api-key-box__row">
+                  <input
+                    type="password"
+                    className="api-key-box__input"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="sk-…"
+                  />
+                  <button type="button" className="button button--secondary" onClick={handleSaveApiKey}>
+                    保存
+                  </button>
+                </div>
+                <p className="api-key-box__hint">正式设置页将在 T8 提供。</p>
+              </div>
+            )}
+            <div className="extract-actions">
+              <button
+                type="button"
+                className="text-button"
+                disabled={isExtracting}
+                onClick={handleExtract}
+              >
+                {isExtracting ? '提取中…' : '预览提取的原文 Markdown'}
+              </button>
+            </div>
+            {extractError && (
+              <p className="extract-error" role="alert">
+                提取失败（{extractError.code}）：{extractError.message}
+              </p>
+            )}
             <ul className="feature-list">
               <li>自动提取页面主要正文</li>
               <li>保留图片、标题、作者与原文链接</li>
@@ -116,7 +391,7 @@ const App: React.FC = () => {
         </div>
         <button type="button" className="icon-button" aria-label="打开设置" title="设置功能将在 T8 接通">⚙</button>
       </header>
-      <main className="popup__body">{renderContent()}</main>
+      <main className="popup__body">{previewOpen ? renderPreview() : renderContent()}</main>
       <nav className="demo-switcher" aria-label="界面状态模拟切换">
         <span>演示状态</span>
         <div className="demo-switcher__controls">
@@ -125,7 +400,11 @@ const App: React.FC = () => {
               type="button"
               key={state}
               className={viewState === state ? 'is-active' : ''}
-              onClick={() => setViewState(state)}
+              onClick={() => {
+                setPreviewOpen(false);
+                setTranslateError(null);
+                setViewState(state);
+              }}
             >
               {VIEW_LABELS[state]}
             </button>
