@@ -250,9 +250,6 @@ const App: React.FC = () => {
       setCurrentArticle(article);
       const requestId = crypto.randomUUID();
       const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
-      // #region debug-point A:panel-connect
-      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'A,D,E', location: 'App.tsx:connect', msg: '[DEBUG] 面板已创建翻译端口', data: { portName: port.name, requestId }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       activePortRef.current = port;
       let settled = false;
 
@@ -292,9 +289,6 @@ const App: React.FC = () => {
         }
       });
       port.onDisconnect.addListener(() => {
-        // #region debug-point A,D:panel-disconnect
-        void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'A,D', location: 'App.tsx:onDisconnect', msg: '[DEBUG] 面板翻译端口断开', data: { settled, lastError: chrome.runtime.lastError?.message ?? null }, ts: Date.now() }) }).catch(() => {});
-        // #endregion
         activePortRef.current = null;
         translatingRef.current = false;
         if (!settled) {
@@ -587,15 +581,18 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="popup">
-      <header className="popup__header">
+    <div className="side-panel">
+      <header className="side-panel__header">
         <div className="brand">
           <span className="brand__mark" aria-hidden="true">译</span>
-          <span className="popup__title">网页翻译助手</span>
+          <div className="brand__copy">
+            <span className="side-panel__title">网页翻译助手</span>
+            <span className="side-panel__subtitle">沉浸阅读 · 即时翻译</span>
+          </div>
         </div>
-        <button type="button" className="icon-button" aria-label="打开设置" onClick={() => void chrome.runtime.openOptionsPage()}>⚙</button>
+        <button type="button" className="icon-button" aria-label="打开设置" title="打开设置" onClick={() => void chrome.runtime.openOptionsPage()}>⚙</button>
       </header>
-      <main className="popup__body">{previewOpen ? renderPreview() : renderContent()}</main>
+      <main className="side-panel__body">{previewOpen ? renderPreview() : renderContent()}</main>
     </div>
   );
 };

@@ -9,7 +9,6 @@ export default defineManifest({
   description: '提取英文网页主要文章内容，并通过 AI 大模型翻译为中文',
   version: '0.1.0',
   action: {
-    default_popup: 'src/panel/index.html',
     default_icon: {
       '16': 'icons/icon16.png',
       '48': 'icons/icon48.png',
@@ -25,6 +24,9 @@ export default defineManifest({
     service_worker: 'src/background/service-worker.ts',
     type: 'module',
   },
+  side_panel: {
+    default_path: 'src/panel/index.html',
+  },
   content_scripts: [
     {
       matches: ['<all_urls>'],
@@ -36,6 +38,6 @@ export default defineManifest({
     page: 'src/panel/options.html',
     open_in_tab: true,
   },
-  permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
-  host_permissions: ['https://dashscope.aliyuncs.com/*', 'http://127.0.0.1/*'],
+  permissions: ['activeTab', 'scripting', 'storage', 'downloads', 'sidePanel'],
+  host_permissions: ['https://dashscope.aliyuncs.com/*'],
 });

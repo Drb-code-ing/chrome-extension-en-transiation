@@ -18,10 +18,11 @@ import {
   translateStream,
 } from './services/translate-client.ts';
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+});
+
 chrome.runtime.onConnect.addListener((port) => {
-  // #region debug-point A:worker-connect
-  void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'A,E', location: 'background/index.ts:onConnect', msg: '[DEBUG] 后台收到端口连接', data: { portName: port.name }, ts: Date.now() }) }).catch(() => {});
-  // #endregion
   // 只处理翻译专用的长连接。
   if (port.name !== TRANSLATE_PORT) {
     return;
@@ -38,9 +39,6 @@ chrome.runtime.onConnect.addListener((port) => {
       port.postMessage({ type: MESSAGE_TYPES.translateDone, requestId, fullText });
     } catch (error) {
       const translateError: TranslateError = mapTranslateError(error);
-      // #region debug-point B,C:worker-error
-      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'B,C', location: 'background/index.ts:catch', msg: '[DEBUG] 后台翻译异常', data: { code: translateError.code, message: translateError.message, raw: error instanceof Error ? error.message : String(error) }, ts: Date.now() }) }).catch(() => {});
-      // #endregion
       port.postMessage({ type: MESSAGE_TYPES.translateError, requestId, error: translateError });
     }
   });
