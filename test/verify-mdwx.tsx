@@ -12,7 +12,7 @@ import { useThrottledMarkdown } from '../src/panel/hooks/useThrottledMarkdown';
 /** 把 jsdom 的 window/document 等全局挂到 globalThis。 */
 function injectDom(): void {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
-    url: 'chrome-extension://test/popup.html',
+    url: 'chrome-extension://test/src/panel/index.html',
   });
   const target = globalThis as Record<string, unknown>;
   for (const key of ['document', 'window', 'Node', 'MutationObserver']) {

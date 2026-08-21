@@ -13,7 +13,6 @@ import {
   loadLastResult,
   loadSettings,
   saveLastResult,
-  saveSettings,
 } from '@/shared/storage/index.ts';
 import type {
   AppSettings,
@@ -95,7 +94,6 @@ const App: React.FC = () => {
   // ---- 标签页信息与设置 ----
   const [tabInfo, setTabInfo] = useState<TabInfo>({ title: '', url: '' });
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState('');
 
   // ---- 提取（T3）----
   const [isExtracting, setIsExtracting] = useState(false);
@@ -120,7 +118,7 @@ const App: React.FC = () => {
   const mdFollowSystem = settings?.followSystemTheme ?? true;
   const mdViewMode = settings?.viewMode ?? 'mobile';
 
-  // 弹窗关闭时断开仍在运行的翻译端口，避免后台任务悬挂。
+  // Side Panel 卸载或关闭时断开仍在运行的翻译端口，避免后台任务悬挂。
   useEffect(
     () => () => {
       activePortRef.current?.disconnect();
@@ -221,17 +219,6 @@ const App: React.FC = () => {
       setIsExtracting(false);
     }
   }, [requestExtract]);
-
-  // 保存临时 API Key（T8 提供正式设置页）。
-  const handleSaveApiKey = useCallback(async () => {
-    if (!settings) {
-      return;
-    }
-    const next: AppSettings = { ...settings, apiKey: apiKeyInput.trim() };
-    await saveSettings(next);
-    setSettings(next);
-    setApiKeyInput('');
-  }, [settings, apiKeyInput]);
 
   // 一键翻译：提取请求后经端口发起流式翻译，逐块追加展示。
   const handleTranslate = useCallback(async () => {
@@ -538,24 +525,6 @@ const App: React.FC = () => {
               </div>
             </div>
             <button type="button" className="button button--primary button--large" onClick={handleTranslate}>一键翻译当前文章</button>
-            {settings && !settings.apiKey && (
-              <div className="api-key-box">
-                <label className="api-key-box__label">API Key（临时）</label>
-                <div className="api-key-box__row">
-                  <input
-                    type="password"
-                    className="api-key-box__input"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="sk-…"
-                  />
-                  <button type="button" className="button button--secondary" onClick={handleSaveApiKey}>
-                    保存
-                  </button>
-                </div>
-                <p className="api-key-box__hint">正式设置页将在 T8 提供。</p>
-              </div>
-            )}
             <div className="extract-actions">
               <button
                 type="button"
