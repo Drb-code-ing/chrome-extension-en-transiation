@@ -54,6 +54,7 @@ const Options: React.FC = () => {
   const [loaded, setLoaded] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -101,15 +102,23 @@ const Options: React.FC = () => {
 
   /** 保存设置。 */
   const handleSave = async (): Promise<void> => {
+    setSaving(true);
+    setNotice(null);
     const next: AppSettings = {
       ...form,
       baseUrl: form.baseUrl.trim(),
       apiKey: form.apiKey.trim(),
     };
-    await saveSettings(next);
-    setForm(next);
-    setNotice('设置已保存。');
-    window.setTimeout(() => setNotice(null), 2500);
+    try {
+      await saveSettings(next);
+      setForm(next);
+      setNotice('设置已保存。');
+      window.setTimeout(() => setNotice(null), 2500);
+    } catch (error) {
+      setNotice(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试。');
+    } finally {
+      setSaving(false);
+    }
   };
 
   /** 清空最近一次结果（带确认）。 */
@@ -117,9 +126,14 @@ const Options: React.FC = () => {
     if (!window.confirm('确定要清空最近一次翻译结果吗？')) {
       return;
     }
-    await clearLastResult();
-    setNotice('最近一次翻译结果已清空。');
-    window.setTimeout(() => setNotice(null), 2500);
+    setNotice(null);
+    try {
+      await clearLastResult();
+      setNotice('最近一次翻译结果已清空。');
+      window.setTimeout(() => setNotice(null), 2500);
+    } catch (error) {
+      setNotice(error instanceof Error ? `清空失败：${error.message}` : '清空失败，请重试。');
+    }
   };
 
   if (!loaded) {
@@ -198,15 +212,31 @@ const Options: React.FC = () => {
         </div>
 
         <div className="opt-card__actions">
-          <button type="button" className="opt-secondary" onClick={() => void handleTest()} disabled={testing}>
+          <button
+            type="button"
+            className="opt-secondary"
+            onClick={() => void handleTest()}
+            disabled={testing || saving}
+            aria-busy={testing}
+          >
             {testing ? '测试中…' : '测试连接'}
           </button>
-          <button type="button" className="opt-primary" onClick={() => void handleSave()}>
-            保存设置
+          <button
+            type="button"
+            className="opt-primary"
+            onClick={() => void handleSave()}
+            disabled={testing || saving}
+            aria-busy={saving}
+          >
+            {saving ? '保存中…' : '保存设置'}
           </button>
         </div>
         {testResult && (
-          <p className={testResult.ok ? 'opt-feedback opt-feedback--ok' : 'opt-feedback opt-feedback--err'}>
+          <p
+            className={testResult.ok ? 'opt-feedback opt-feedback--ok' : 'opt-feedback opt-feedback--err'}
+            role={testResult.ok ? 'status' : 'alert'}
+            aria-live={testResult.ok ? 'polite' : 'assertive'}
+          >
             {testResult.text}
           </p>
         )}
@@ -277,7 +307,15 @@ const Options: React.FC = () => {
         </div>
       </section>
 
-      {notice && <p className="opt-notice">{notice}</p>}
+      {notice && (
+        <p
+          className={notice.includes('失败') ? 'opt-notice opt-notice--error' : 'opt-notice'}
+          role={notice.includes('失败') ? 'alert' : 'status'}
+          aria-live={notice.includes('失败') ? 'assertive' : 'polite'}
+        >
+          {notice}
+        </p>
+      )}
     </main>
   );
 };

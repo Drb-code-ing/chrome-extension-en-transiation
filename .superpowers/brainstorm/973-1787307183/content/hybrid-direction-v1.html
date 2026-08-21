@@ -1,0 +1,57 @@
+<h2>A 配色 × C 布局：融合方案</h2>
+<p class="subtitle">保留 A 的暖白、墨绿和阅读气质，采用 C 的平面结构、宽松留白与低装饰布局。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">初始状态</div>
+    <div class="mockup-body" style="padding:20px;background:#f4f1e8">
+      <div style="max-width:340px;margin:auto;background:#fffef9;border:1px solid #dedfd8;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #e3e3dc">
+          <div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;color:#fff;background:#17664b;border-radius:8px 2px 8px 2px;font:700 14px Georgia,serif">译</span><div><b style="display:block;color:#18231f;font:700 15px Georgia,serif">网页翻译助手</b><small style="color:#7b837f;letter-spacing:.08em">沉浸阅读</small></div></div>
+          <button style="width:34px;height:34px;color:#53625b;background:transparent;border:1px solid transparent;border-radius:8px">⚙</button>
+        </div>
+        <main style="padding:34px 20px 40px">
+          <small style="color:#17664b;font-weight:700;letter-spacing:.14em">当前页面</small>
+          <h3 style="margin:10px 0 24px;color:#18231f;font:700 25px/1.3 Georgia,serif">准备开始翻译</h3>
+          <div style="padding-bottom:18px;border-bottom:1px solid #e0e1da">
+            <b style="display:block;color:#26332d;font-size:14px;line-height:1.5">Designing Better Interfaces</b>
+            <small style="display:block;margin-top:5px;color:#7a847f">example.com/article</small>
+          </div>
+          <button style="width:100%;margin-top:24px;padding:13px;color:#fff;background:#17664b;border:1px solid #17664b;border-radius:8px;font-weight:700;box-shadow:0 7px 18px rgba(23,102,75,.15)">一键翻译当前文章</button>
+          <button style="width:100%;margin-top:9px;padding:11px;color:#14563f;background:transparent;border:1px solid #c8d8d0;border-radius:8px;font-weight:600">预览原文</button>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">译文状态</div>
+    <div class="mockup-body" style="padding:20px;background:#f4f1e8">
+      <div style="max-width:340px;margin:auto;background:#fffef9;border:1px solid #dedfd8;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #e3e3dc"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:28px;height:28px;color:#fff;background:#17664b;border-radius:7px 2px 7px 2px;font:700 13px Georgia,serif">译</span><b style="color:#18231f;font:700 15px Georgia,serif">网页翻译助手</b></div><span style="color:#63716a">⚙</span></div>
+        <main style="padding:30px 20px 40px">
+          <small style="color:#17664b;font-weight:700;letter-spacing:.14em">翻译完成</small>
+          <h3 style="margin:9px 0 8px;color:#18231f;font:700 24px/1.32 Georgia,serif">设计更好的界面</h3>
+          <p style="margin:0 0 24px;color:#7c8580;font-size:11px">Designing Better Interfaces · 6 分钟阅读</p>
+          <article style="color:#303d37;font:14px/1.85 Georgia,'Songti SC',serif">
+            <p>优秀的界面设计并不依赖大量装饰，而是通过清晰的信息层级、稳定的间距节奏和准确的交互反馈来建立信任。</p>
+            <h4 style="margin:22px 0 8px;color:#1b2b24;font-size:17px">建立可读的视觉层次</h4>
+            <p>标题、正文与辅助信息之间需要形成明确但克制的对比，让读者能够自然地扫描长篇内容。</p>
+            <blockquote style="margin:22px 0;padding:2px 0 2px 14px;color:#52635b;border-left:3px solid #78a491">设计的价值，在于让内容更容易被理解。</blockquote>
+          </article>
+          <div style="display:flex;gap:8px;margin-top:28px;padding-top:18px;border-top:1px solid #e1e2dc"><button style="flex:1;padding:10px;color:#fff;background:#17664b;border:0;border-radius:8px;font-weight:700">下载译文</button><button style="flex:1;padding:10px;color:#14563f;background:transparent;border:1px solid #c8d8d0;border-radius:8px;font-weight:600">打开原文</button></div>
+        </main>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>具体落地规则</h3>
+  <div class="options">
+    <div class="option" data-choice="hybrid" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>颜色采用 A</h3><p>背景 #F4F1E8、纸张 #FFFEF9、正文 #18231F、主色 #17664B；成功与主要操作统一使用墨绿。</p></div></div>
+    <div class="option" data-choice="flat" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>结构采用 C</h3><p>取消大面积悬浮卡片和重阴影；内容沿单列文档流排列，只用细分割线、留白和字重建立层级。</p></div></div>
+    <div class="option" data-choice="spacing" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>间距采用 4px 基础网格</h3><p>页面横向 20px，区块间 24–32px，控件间 8–12px；窄侧栏按钮纵向排列，宽侧栏允许双列。</p></div></div>
+    <div class="option" data-choice="type" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>排版保持阅读感</h3><p>界面正文使用系统无衬线字体，主标题和译文使用 Georgia / 宋体；正文 14px、行高 1.8，标题 24–26px。</p></div></div>
+  </div>
+</div>

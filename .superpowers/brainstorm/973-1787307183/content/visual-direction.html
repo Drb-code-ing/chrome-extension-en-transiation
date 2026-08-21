@@ -1,0 +1,54 @@
+<h2>选择侧边栏的视觉方向</h2>
+<p class="subtitle">三种方案都保留当前功能，重点比较视觉气质、信息密度与长文阅读体验。</p>
+
+<div class="cards">
+  <div class="card" data-choice="editorial" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f4f1e8;min-height:360px">
+      <div style="width:300px;margin:auto;background:#f8f6ef;border:1px solid #d9ddd6;border-radius:18px;overflow:hidden;box-shadow:0 18px 46px rgba(31,48,41,.12)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:rgba(255,254,249,.94);border-bottom:1px solid #dfe2dc">
+          <div style="display:flex;gap:10px;align-items:center"><span style="display:grid;place-items:center;width:32px;height:32px;color:#fff;background:#17664b;border-radius:10px 3px 10px 3px;font-family:serif;font-weight:700">译</span><div><b style="display:block;color:#17231e;font-family:serif">网页翻译助手</b><small style="color:#78817c;letter-spacing:.08em">沉浸阅读</small></div></div><span style="color:#64716b">⚙</span>
+        </div>
+        <div style="padding:24px 18px 28px">
+          <small style="color:#17664b;font-weight:700;letter-spacing:.14em">CURRENT ARTICLE</small>
+          <h3 style="margin:7px 0 18px;color:#17231e;font:700 23px/1.28 Georgia,serif">准备翻译这篇英文文章</h3>
+          <div style="padding:15px;background:#fffef9;border:1px solid #dfe2dc;border-radius:14px"><b style="display:block;color:#24312b">Designing Better Interfaces</b><small style="color:#7b8580">example.com/article</small></div>
+          <button style="width:100%;margin-top:18px;padding:12px;color:#fff;background:#17664b;border:0;border-radius:12px;font-weight:700">一键翻译当前文章</button>
+          <p style="margin:18px 0 0;color:#727d77;font:13px/1.7 Georgia,serif">强调编辑感、阅读感和内容层次，适合长篇文章。</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · 编辑阅读风（推荐）</h3><p>暖白纸张、深绿强调色、衬线标题与克制阴影。专业、耐读，延续现有品牌但更精致。</p></div>
+  </div>
+
+  <div class="card" data-choice="productivity" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#eef2f6;min-height:360px">
+      <div style="width:300px;margin:auto;background:#f7f9fb;border:1px solid #d9e0e7;border-radius:14px;overflow:hidden;box-shadow:0 16px 40px rgba(32,55,80,.12)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:#fff;border-bottom:1px solid #dfe5eb"><div><b style="display:block;color:#152235">网页翻译助手</b><small style="color:#728096">AI TRANSLATOR</small></div><span style="color:#64748b">⚙</span></div>
+        <div style="padding:20px 16px 24px">
+          <div style="display:inline-block;padding:5px 8px;color:#2456d7;background:#e9efff;border-radius:6px;font-size:10px;font-weight:700">READY</div>
+          <h3 style="margin:11px 0 16px;color:#162338;font:700 21px/1.3 system-ui">翻译当前网页内容</h3>
+          <div style="padding:14px;background:#fff;border:1px solid #dce3eb;border-radius:10px"><b style="display:block;color:#27364a">Designing Better Interfaces</b><small style="color:#7c899b">example.com/article</small></div>
+          <div style="display:flex;gap:8px;margin-top:16px"><button style="flex:1;padding:11px;color:#fff;background:#285bd6;border:0;border-radius:9px;font-weight:700">开始翻译</button><button style="padding:11px;color:#285bd6;background:#fff;border:1px solid #cbd7f4;border-radius:9px">预览</button></div>
+          <p style="margin:18px 0 0;color:#6f7d90;font-size:12px;line-height:1.6">更像现代生产力工具，信息密度更高、操作更直接。</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · 清爽生产力风</h3><p>冷灰背景、蓝色主色、紧凑组件和系统字体。效率感强，但长文阅读气质较弱。</p></div>
+  </div>
+
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f5f5f3;min-height:360px">
+      <div style="width:300px;margin:auto;background:#fff;border:1px solid #e5e5e2;border-radius:4px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px;border-bottom:1px solid #ececea"><b style="color:#171717;font:600 15px system-ui">网页翻译</b><span style="color:#777">•••</span></div>
+        <div style="padding:30px 20px">
+          <small style="color:#888;font-weight:600">当前页面</small>
+          <h3 style="margin:10px 0 22px;color:#171717;font:600 24px/1.3 system-ui">准备开始翻译</h3>
+          <div style="padding:0 0 16px;border-bottom:1px solid #e7e7e4"><b style="display:block;color:#202020">Designing Better Interfaces</b><small style="color:#8a8a86">example.com/article</small></div>
+          <button style="width:100%;margin-top:22px;padding:12px;color:#fff;background:#191919;border:0;border-radius:4px;font-weight:600">翻译文章</button>
+          <p style="margin:22px 0 0;color:#787874;font-size:12px;line-height:1.7">极少装饰，以留白和排版建立层次。</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C · 极简中性风</h3><p>黑白灰、平面化、极少装饰。最克制，但品牌辨识度和状态情绪较弱。</p></div>
+  </div>
+</div>

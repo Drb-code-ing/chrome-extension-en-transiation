@@ -106,6 +106,7 @@ const App: React.FC = () => {
 
   // ---- 翻译（T4）----
   const translate = useThrottledMarkdown(200);
+  const [completedMarkdown, setCompletedMarkdown] = useState('');
   const [translateError, setTranslateError] = useState<TranslateError | null>(null);
   const translatingRef = useRef(false);
   const activePortRef = useRef<chrome.runtime.Port | null>(null);
@@ -227,6 +228,8 @@ const App: React.FC = () => {
     }
     translatingRef.current = true;
     setTranslateError(null);
+    setExtractError(null);
+    setCompletedMarkdown('');
     translate.reset();
     setViewState('translating');
     try {
@@ -296,7 +299,13 @@ const App: React.FC = () => {
     } catch (error) {
       translatingRef.current = false;
       activePortRef.current = null;
-      setTranslateError(toTranslateError(error));
+      const code = error && typeof error === 'object' ? String((error as { code?: unknown }).code ?? '') : '';
+      if (code === 'EXTRACT_EMPTY' || code === 'EXTRACT_FAILED') {
+        setExtractError(toExtractError(error));
+        setTranslateError(null);
+      } else {
+        setTranslateError(toTranslateError(error));
+      }
       setViewState('error');
     }
   }, [settings?.apiKey, requestExtract, translate]);
@@ -446,7 +455,7 @@ const App: React.FC = () => {
                 type="button"
                 className="button button--secondary"
                 onClick={() => {
-                  void downloadMarkdown(translate.text, currentArticle?.title ?? '译文', '-译文');
+                  void downloadMarkdown(completedMarkdown, currentArticle?.title ?? '译文', '-译文');
                 }}
               >
                 下载译文
@@ -466,7 +475,7 @@ const App: React.FC = () => {
             </div>
             <div className="translation-preview translation-preview--complete">
               <MarkdownRenderer
-                markdown={translate.text}
+                markdown={completedMarkdown}
                 theme={mdTheme}
                 showSettings={false}
                 enableCopy={false}
@@ -478,7 +487,16 @@ const App: React.FC = () => {
               />
             </div>
             <div className="bottom-actions">
-              <button type="button" className="text-button" onClick={() => setViewState('idle')}>重新翻译</button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setLastResult(null);
+                  setViewState('idle');
+                }}
+              >
+                重新翻译
+              </button>
               <button
                 type="button"
                 className="button button--primary button--compact"
@@ -501,7 +519,18 @@ const App: React.FC = () => {
             <p className="eyebrow eyebrow--error">翻译未完成</p>
             <h2>{renderErrorTitle()}</h2>
             {activeError && <p className="error-message">{activeError.message}</p>}
-            <button type="button" className="button button--primary" onClick={() => setViewState('idle')}>返回重试</button>
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={() => {
+                setTranslateError(null);
+                setExtractError(null);
+                setPreviewArticle(null);
+                setViewState('idle');
+              }}
+            >
+              返回重试
+            </button>
             <p className="supporting-text">已有的最近一次成功结果不会被覆盖。</p>
           </section>
         );
