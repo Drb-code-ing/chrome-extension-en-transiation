@@ -7,7 +7,7 @@
 - **适用平台**：Chrome 浏览器扩展（Manifest V3）
 - **技术栈基线**：TypeScript + React + Vite
 
-本设计文档描述插件整体架构、关键技术选型、目录结构与编码规范，为后续实现提供依据。文档不包含具体实现代码。
+本设计文档描述当前插件实现的整体架构、运行入口、权限、通信、目录结构与界面布局，并以源码和 Manifest 配置为准。
 
 ## 2. 设计目标
 
@@ -27,26 +27,29 @@
 
 - **内容脚本层（Content Script）**：注入并运行在目标网页中，负责读取页面 DOM，提取文章并转换为 Markdown。可访问页面内容，但不能直接跨域调用翻译接口。
 - **后台层（Background Service Worker）**：扩展进程，持有 AI 客户端配置，发起翻译请求并接收流式结果，向 UI 层转发增量内容。可跨域访问翻译服务域名。
-- **界面层（Panel / Popup UI）**：React 应用，负责交互、状态流转、打字机效果展示、结果渲染与本地持久化。使用 `md-wx` 渲染 Markdown。
+- **界面层（Chrome Side Panel + Options UI）**：主界面是浏览器右侧全高 Side Panel，不配置 Action Popup；React 应用负责交互、状态流转、流式展示、结果渲染与本地持久化。独立 Options 标签页负责模型配置、展示偏好和本地数据清理。两者均复用共享类型与存储封装。
 
-三层之间通过 Chrome 消息机制通信，共享的类型与存储封装放在共享层。
+内容提取使用标签页消息，流式翻译使用 Runtime Port 长连接，设置页测试连接使用 Runtime 单次请求；共享的协议、类型、常量与存储封装放在 `src/shared`。
 
 ### 3.2 总体数据流
 
 ```mermaid
 flowchart TD
-    U[用户点击插件图标] --> P[界面层 Panel]
-    P -->|extract 请求| C[内容脚本层 Content Script]
-    C -->|读取当前页面 DOM| C
-    C -->|返回 文章对象 title/author/url/markdown| P
-    P -->|进入翻译中状态| P
-    P -->|translate 请求 携带 markdown| B[后台层 Background]
-    B -->|OpenAI 兼容接口 流式请求| Q[Qwen / DashScope]
+    U[用户点击工具栏图标] -->|openPanelOnActionClick| P[Chrome Side Panel]
+    P -->|tabs.query 获取活动页| T[当前活动标签页]
+    P -->|tabs.sendMessage EXTRACT_ARTICLE| C[Content Script]
+    P -. 接收端缺失时 scripting.executeScript 后重试 .-> C
+    C -->|读取 DOM 并返回 title/author/url/markdown| P
+    P -->|runtime.connect: translate| B[Background Service Worker]
+    P -->|TRANSLATE_START + requestId| B
+    B -->|读取本地 settings| S[(chrome.storage.local)]
+    B -->|OpenAI 兼容接口流式请求| Q[Qwen / DashScope]
     Q -->|SSE 增量块| B
-    B -->|逐块转发 delta| P
-    P -->|累积 delta 动态渲染| P
-    P -->|md-wx 渲染最终 Markdown| P
-    P -->|完成后写入 chrome.storage.local| S[(本地存储 lastResult)]
+    B -->|TRANSLATE_DELTA / DONE / ERROR| P
+    P -->|节流累积并由 md-wx 渲染| P
+    P -->|成功后保存 lastResult| S
+    P -->|openOptionsPage| O[Options 独立标签页]
+    O -->|TEST_CONNECTION 单次消息| B
 ```
 
 ### 3.3 模块职责划分
@@ -67,11 +70,13 @@ flowchart TD
 
 | 决策点 | 结论 | 理由 |
 |--------|------|------|
+| 主界面承载 | Chrome Side Panel，不使用 Action Popup | 侧边栏全高展示长译文，可由用户调整宽度，并能与原网页并排阅读 |
+| 工具栏入口 | `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` | 点击扩展图标直接打开 Side Panel；该行为在扩展安装/更新时由 Service Worker 设置 |
 | 提取运行位置 | 内容脚本中直接读取已渲染 DOM，而非后台抓取 HTML | 用户浏览器中 DOM 已渲染，可处理 SPA、登录墙、动态内容，避免反爬与 CORS 问题 |
-| 翻译调用位置 | 统一放在后台 Service Worker | 集中管理密钥与请求、便于扩展（如未来右键菜单翻译）；通过持续消息保持 Worker 存活 |
+| 翻译调用位置 | 统一放在后台 Service Worker | 集中管理配置与跨域请求；Side Panel 通过名为 `translate` 的 Runtime Port 保持流式会话 |
 | 模型接入 | OpenAI SDK 兼容，基地址指向 Qwen 兼容模式 | 只需改配置即可切换模型/服务商 |
-| 渲染方式 | 使用 `md-wx` 组件 | 复用成熟 Markdown 渲染，支持主题与移动端预览 |
-| 持久化范围 | 仅 `chrome.storage.local` 保存最近一次结果 | 符合需求：无历史记录、本地存储 |
+| 渲染方式 | 使用 `md-wx` 组件 | 复用成熟 Markdown 渲染，支持主题与视图模式 |
+| 持久化范围 | 仅 `chrome.storage.local` 保存 `settings` 与最近一次结果 | 符合需求：无历史列表、无云端存储 |
 
 ## 4. 关键技术选型
 
@@ -148,44 +153,93 @@ flowchart TD
 - `md-wx` 为 npm 包，随项目依赖安装，在 React 项目中引入 `MarkdownRenderer` 组件及其样式文件即可使用。
 - 翻译完成的 Markdown 结果交由 `MarkdownRenderer` 渲染；通过主题、跟随系统主题、视图模式等属性提供可配置展示（属性细节以 `docs/md-wx-api-usage.md` 为准）。
 - 打字机效果作用于外层展示层：界面层将流式增量内容累积为"当前完整 Markdown"，按节奏更新并交由渲染器刷新，而非逐字符插入已渲染 DOM，从而兼顾打字机效果与渲染稳定性。
-- 性能控制：对长文采取节流刷新（如限制渲染频率或分块追加），避免每次增量都触发全量重渲染导致卡顿。
+- 性能控制：当前通过 `useThrottledMarkdown(200)` 合并增量更新，避免每个模型数据块都触发全量重渲染。
 
-## 5. 目录结构规范
+### 4.4 Chrome Side Panel 布局
 
-### 5.1 整体目录
+主界面由 `src/panel/App.tsx` 与 `src/panel/styles/global.css` 实现：
+
+```text
+┌────────────────────────────────┐
+│ [译] 网页翻译助手          [设置]│  固定顶部栏，约 72px
+│      沉浸阅读 · 即时翻译       │
+├────────────────────────────────┤
+│                                │
+│ 当前唯一状态模块                │
+│ 初始 / 最近结果 / 原文预览      │  主体统一纵向滚动
+│ 翻译中 / 成功 / 失败            │
+│                                │
+└────────────────────────────────┘
+```
+
+- 根容器使用 `height: 100vh` 的纵向 Flex 布局；`body` 最小宽度为 `320px`，宽度由 Chrome Side Panel 和用户拖动控制。
+- 顶部栏位于滚动容器之外，包含品牌、标题、副标题和设置按钮；设置按钮调用 `chrome.runtime.openOptionsPage()`。
+- `.side-panel__body` 使用 `flex: 1; min-height: 0; overflow-y: auto`，所有长内容在主区域连续滚动，不创建固定高度的译文嵌套滚动区。
+- 主体同一时间仅渲染一个主状态：初始页（存在 `lastResult` 时优先显示最近结果）、原文 Markdown 预览、翻译中、成功或失败。
+- 翻译中和成功结果使用 `MarkdownRenderer`；原文预览使用保留换行的 `<pre>`。成功页提供下载译文、下载原文、重新翻译与打开原文操作。
+- Side Panel 首次挂载并行读取活动标签页、`settings` 和 `lastResult`；关闭 Side Panel 时断开仍在运行的翻译端口。
+
+Options 是独立标签页，不嵌入 Side Panel；其布局和样式分别由 `options.tsx` 与 `styles/options.css` 管理。
+
+## 5. 当前目录与运行入口
+
+### 5.1 主要目录
 
 ```text
 chrome-extension-en-transiation/
-├── docs/                        # 需求与设计文档（proposal.md / design.md）
-├── public/                      # 静态资源：图标、默认样式等
+├── docs/
+├── public/icons/                # Manifest 图标
 ├── src/
-│   ├── content/                 # 内容脚本层（注入页面）
-│   │   ├── extractor/           # 文章提取与 Markdown 转换
-│   │   ├── meta/                # 元数据补充（meta / JSON-LD）
-│   │   └── index.ts             # 内容脚本入口，消息监听
-│   ├── background/              # 后台层（Service Worker）
-│   │   ├── services/            # AI 翻译客户端与流式转发
-│   │   └── index.ts             # 后台入口，消息路由
-│   ├── panel/                   # 界面层（React）
-│   │   ├── components/          # 界面组件（状态、打字机、结果渲染等）
-│   │   ├── hooks/               # 自定义 Hook
-│   │   ├── store/               # 界面状态管理
-│   │   ├── styles/              # 界面样式
-│   │   └── index.tsx            # 界面入口
-│   ├── shared/                  # 跨层共享
-│   │   ├── types/               # 类型定义
-│   │   ├── messages/            # 消息协议定义与封装
-│   │   ├── storage/             # chrome.storage 读写封装
-│   │   └── constants/           # 常量（默认模型、提示词、默认配置）
-│   └── config/                  # 构建期配置（manifest 生成、环境变量）
-├── manifest.json                # 扩展清单（或由构建生成）
+│   ├── content/
+│   │   ├── extractor/           # DOM 规范化、正文提取、Markdown 转换
+│   │   ├── meta/                # 标题与作者元数据补充
+│   │   └── index.ts             # Content Script 消息入口
+│   ├── background/
+│   │   ├── services/            # OpenAI 兼容翻译客户端
+│   │   ├── index.ts             # Side Panel 行为、端口与消息路由
+│   │   └── service-worker.ts    # Manifest 声明的 Service Worker 入口
+│   ├── panel/
+│   │   ├── App.tsx              # Side Panel 状态与交互
+│   │   ├── hooks/               # 流式 Markdown 节流
+│   │   ├── styles/              # Side Panel 与 Options 样式
+│   │   ├── index.html           # Side Panel HTML 入口
+│   │   ├── main.tsx             # Side Panel React 入口
+│   │   ├── options.html         # Options HTML 入口
+│   │   └── options.tsx          # Options React 入口
+│   ├── shared/                  # 类型、消息、存储与常量
+│   └── config/manifest.config.ts# Manifest V3 单一配置源
 ├── package.json
 ├── tsconfig.json
-├── vite.config.ts               # 构建配置（若采用 Vite）
-└── eslint.config.mjs / .prettierrc  # 代码规范配置
+└── vite.config.ts               # Vite + CRXJS 构建，输出 dist/
 ```
 
-### 5.2 目录职责约定
+### 5.2 Manifest 与入口映射
+
+| 运行入口 | Manifest / HTML 配置 | 实际源码 | 说明 |
+|----------|----------------------|----------|------|
+| 工具栏 Action | `action` 仅配置图标，无 `default_popup` | `src/background/index.ts` | `onInstalled` 中设置 `openPanelOnActionClick: true`，点击图标直接打开 Side Panel |
+| Side Panel | `side_panel.default_path: src/panel/index.html` | `index.html` → `main.tsx` → `App.tsx` | Chrome 右侧主界面 |
+| Background | `background.service_worker: src/background/service-worker.ts`，`type: module` | `service-worker.ts` 导入 `index.ts` | 注册 Side Panel 行为、翻译端口和测试连接监听 |
+| Content Script | `<all_urls>`，`document_idle` | `src/content/index.ts` | 监听 `EXTRACT_ARTICLE` 并读取当前页面 DOM |
+| Options | `options_ui.page: src/panel/options.html`，`open_in_tab: true` | `options.html` → `options.tsx` | 由 Side Panel 设置按钮调用 `chrome.runtime.openOptionsPage()` 打开 |
+
+`src/config/manifest.config.ts` 由 `@crxjs/vite-plugin` 构建为 `dist/manifest.json`；仓库根目录不维护手写 `manifest.json`。
+
+### 5.3 权限与站点访问
+
+| 配置 | 当前值 | 实际用途 |
+|------|--------|----------|
+| `activeTab` | 浏览器权限 | 查询用户当前活动标签页并针对当前页面发起提取 |
+| `scripting` | 浏览器权限 | 页面未存在消息接收端时，通过 `chrome.scripting.executeScript` 补充注入 Manifest 中的 Content Script 后重试 |
+| `storage` | 浏览器权限 | 在 `chrome.storage.local` 保存 `settings` 与 `lastResult` |
+| `downloads` | 浏览器权限 | 下载原文和译文 Markdown |
+| `sidePanel` | 浏览器权限 | 使用 Chrome Side Panel API 并配置工具栏点击行为 |
+| `https://dashscope.aliyuncs.com/*` | Host 权限 | 后台访问默认 DashScope OpenAI 兼容服务 |
+| `<all_urls>` | Content Script 匹配范围 | 在普通网页于 `document_idle` 注入提取监听；Side Panel 在请求前另行限制为 `http/https` 页面 |
+
+当前未申请 `tabs` 权限，也未配置 Popup。用户自定义其他服务地址仍受 Manifest Host 权限限制。
+
+### 5.4 目录职责约定
 
 | 目录 | 允许内容 | 禁止内容 |
 |------|----------|----------|
@@ -195,16 +249,16 @@ chrome-extension-en-transiation/
 | `src/shared` | 类型、消息协议、存储、常量 | 不包含业务实现 |
 | `src/config` | 构建与运行配置 | 不包含业务代码 |
 
-### 5.3 依赖方向
+### 5.5 依赖方向
 
 - 依赖单向：`panel` → `shared`；`background` → `shared`；`content` → `shared`。
 - `shared` 不得反向依赖任何上层模块，保证共享层可独立测试。
 - 界面层不直接持有 AI 客户端与提取逻辑，只通过消息协议与后台、内容脚本交互。
 
-### 5.4 构建工具选型
+### 5.6 构建工具
 
-- 采用 **Vite + TypeScript + React** 构建；扩展脚手架选用支持 Manifest V3 的 Vite 扩展插件（如 `@crxjs/vite-plugin`，WXT 作为备选），保证 content / background / panel 多入口分别打包。
-- `manifest.json` 由构建配置生成，权限、图标、入口统一管理。
+- 使用 **Vite + TypeScript + React + `@crxjs/vite-plugin`** 构建 Content Script、Background、Side Panel 与 Options 多入口。
+- `vite.config.ts` 加载 `src/config/manifest.config.ts`，构建产物统一输出到 `dist/`。
 
 ## 6. 编码规范
 
@@ -246,29 +300,41 @@ chrome-extension-en-transiation/
 - 对外暴露的接口（消息协议、存储结构）变更需同步更新设计文档与类型定义。
 - 新增依赖需说明用途与版本，避免引入无关依赖。
 
-## 7. 消息通信协议
+## 7. 当前通信协议
 
-### 7.1 总体约定
+### 7.1 通道划分
 
-- 所有跨层通信使用 Chrome 消息机制（`runtime.sendMessage` / `onMessage`）。
-- 消息类型、载荷结构集中定义于 `shared/messages`，形成单一事实来源。
-- 异步消息处理必须保持消息通道（异步场景不得提前关闭响应通道）。
-- 消息采用"请求-响应 + 事件推送"两种模式：单次请求用请求-响应；流式增量用事件推送。
+消息常量、载荷和类型守卫集中在 `src/shared/messages/index.ts`：
 
-### 7.2 主要消息
+1. **Side Panel → Content Script：标签页请求-响应**
 
-| 方向 | 类型 | 载荷 | 响应 |
-|------|------|------|------|
-| Panel → Content | 提取文章 | 当前页面信息 | 文章对象或提取失败原因 |
-| Panel → Background | 发起翻译 | Markdown 原文 + 配置 | 任务标识或启动失败原因 |
-| Background → Panel | 增量块 | 任务标识 + 文本增量 | - |
-| Background → Panel | 完成/失败 | 任务标识 + 结果/错误 | - |
-| Panel → Content | 获取当前 URL | 无 | 当前页面 URL |
+   Side Panel 先用 `chrome.tabs.query({ active: true, currentWindow: true })` 找到活动页，再通过 `chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_ARTICLE' })` 请求提取。若接收端不存在，则从当前 Manifest 读取 Content Script 构建文件，以 `chrome.scripting.executeScript` 注入并重试一次。Content Script 的异步监听返回 `true` 保持响应通道。
+2. **Side Panel ↔ Background：Runtime Port 长连接**
 
-### 7.3 消息设计约定
+   Side Panel 调用 `chrome.runtime.connect({ name: 'translate' })`；同一端口上传启动请求并接收增量、完成或错误事件。端口意外断开时，Side Panel 将任务转为 `NETWORK_ERROR`，组件卸载时主动断开端口。
+3. **Options → Background：Runtime 单次请求-响应**
 
-- 每个消息类型对应明确的载荷与错误类型，错误统一携带 `code` 与 `message`。
-- 流式过程以"任务标识"关联增量与完成事件，避免并发翻译互相干扰（界面层同一时间仅允许一个进行中的任务）。
+   设置页用 `chrome.runtime.sendMessage` 发送候选服务配置进行连接测试；后台 `runtime.onMessage` 异步返回结构化结果。
+4. **界面与存储：直接调用共享封装**
+
+   Side Panel 和 Options 直接调用 `src/shared/storage/index.ts` 中的 `chrome.storage.local` 封装，不经 Background 转发。
+
+### 7.2 消息清单
+
+| 通道与方向 | 类型 | 主要载荷 | 返回 / 后续事件 |
+|------------|------|----------|-----------------|
+| `tabs.sendMessage`：Side Panel → Content | `EXTRACT_ARTICLE` | 无额外载荷，由 Content Script 读取当前 DOM | `{ ok: true, article }` 或 `{ ok: false, error }` |
+| `Port('translate')`：Side Panel → Background | `TRANSLATE_START` | `requestId`、`markdown`、`title`、`author`、`url` | 启动同一端口上的流式事件 |
+| `Port('translate')`：Background → Side Panel | `TRANSLATE_DELTA` | `requestId`、`delta` | Side Panel 节流累积并重渲染 Markdown |
+| `Port('translate')`：Background → Side Panel | `TRANSLATE_DONE` | `requestId`、`fullText` | 保存 `lastResult`，切换成功状态 |
+| `Port('translate')`：Background → Side Panel | `TRANSLATE_ERROR` | `requestId`、结构化 `error` | 切换失败状态，不覆盖最近成功结果 |
+| `runtime.sendMessage`：Options → Background | `TEST_CONNECTION` | `baseUrl`、`apiKey`、`model` | 成功消息或结构化翻译错误 |
+
+### 7.3 关联与并发
+
+- 每次翻译由 `crypto.randomUUID()` 生成 `requestId`，Side Panel 只处理与当前任务匹配的端口消息。
+- Side Panel 使用本地引用阻止并发点击；后台从 `chrome.storage.local` 读取已保存设置，`TRANSLATE_START` 不携带 API Key。
+- 错误统一为带 `code` 与 `message` 的结构；提取和连接测试采用判别联合响应。
 
 ## 8. 数据与存储设计
 
@@ -303,7 +369,7 @@ chrome-extension-en-transiation/
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 初始: 打开界面/读取 lastResult
+    [*] --> 初始: 打开 Side Panel/读取 lastResult
     初始 --> 翻译中: 用户发起翻译
     翻译中 --> 成功: 流式完成
     翻译中 --> 失败: 提取失败/网络错误/接口错误/超时
@@ -330,7 +396,7 @@ stateDiagram-v2
 
 ## 10. 安全与隐私
 
-- 权限最小化：仅申请完成功能所需权限（如 `activeTab`、`scripting`、`storage`，以及访问翻译服务域名的 host 权限），不使用无关权限。
+- 权限与 Manifest 保持一致：`activeTab`、`scripting`、`storage`、`downloads`、`sidePanel`；Host 权限仅为默认服务 `https://dashscope.aliyuncs.com/*`。
 - 页面内容仅用于本次翻译请求，不缓存、不统计、不用于其他目的。
 - 翻译内容只发送到用户配置的翻译服务地址。
 - 本地存储仅含最近一次结果与配置；无账号、无云端同步。
@@ -352,7 +418,7 @@ stateDiagram-v2
 | 风险 | 说明 | 应对 |
 |------|------|------|
 | 提取准确度 | 复杂/动态页面识别不理想 | 已选最成熟的 Readability 方案，声明能力边界，保留兜底与用户重试 |
-| MV3 Worker 生命周期 | 长流式任务期间 Worker 可能被回收 | 通过持续消息/心跳保持活跃；必要时将调用下沉至界面层（架构已预留该可能） |
+| MV3 Worker 生命周期 | 长流式任务期间 Worker 可能被回收 | Side Panel 与 Worker 使用 Runtime Port 保持流式会话；端口断开时 UI 明确转为网络错误 |
 | API Key 安全 | 扩展代码用户可见 | 密钥仅本地存储、最小权限、不做服务端中转与日志 |
 | 长文性能 | 流式渲染长文卡顿 | 节流刷新、分块追加、渲染频率限制 |
 | 模型输出格式漂移 | 模型偶尔不遵守输出模板 | 提示词强约束 + 完成后格式校验/修正提示 |

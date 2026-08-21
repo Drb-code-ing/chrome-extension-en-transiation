@@ -20,12 +20,12 @@
 
 | 优先级 | 编号 | 任务 | 涉及页面/模块 | 可见效果 |
 |--------|------|------|---------------|----------|
-| P0 | T1 | 工程脚手架与最小可运行扩展 | 主界面 · 顶部栏（雏形） | 扩展可加载，弹出占位主界面 |
+| P0 | T1 | 工程脚手架与最小可运行扩展 | Side Panel · 顶部栏（雏形） | 扩展可加载，点击图标打开全高侧边栏 |
 | P0 | T2 | 主界面静态骨架与状态切换 | 主界面 · 四个状态模块 | 四态界面可切换 |
 | P1 | T3 | 页面内容提取模块 | 主界面 · 初始模块（新增提取预览） | 真实网页提取出原文 Markdown |
 | P1 | T4 | AI 翻译流式链路 | 主界面 · 初始/翻译中模块 | 一键翻译，译文流式出现 |
 | P1 | T5 | 打字机效果与 md-wx 渲染 | 主界面 · 翻译中/成功模块 | 译文打字机式渲染展示 |
-| P2 | T6 | 最近一次结果持久化 | 主界面 · 初始/成功模块 | 重开插件结果仍在 |
+| P2 | T6 | 最近一次结果持久化 | 主界面 · 初始/成功模块 | 重开侧边栏结果仍在 |
 | P3 | T7 | 下载与打开原文 | 主界面 · 成功结果模块 | 可下载 .md、打开原文 |
 | P3 | T8 | 设置页 | 设置页 · 全部模块 | 配置模型/密钥/主题生效 |
 | P4 | T9 | 错误处理与收尾 | 主界面 · 失败模块 + 全局 | 全流程稳健、可恢复 |
@@ -54,19 +54,20 @@ P4  T9 错误处理与收尾（依赖全部）
 
 **依据**：`design.md` §1（技术栈）、§5.1（目录结构）、§5.4（构建选型）。
 
-**涉及页面/模块**：主界面（Popover）顶部栏雏形——参考 `主界面-页面.md` §3。
+**涉及页面/模块**：Chrome Side Panel 顶部栏雏形——参考 `主界面-页面.md` §3、§9。
 
 **实现内容**：
 1. 初始化 Vite + React + TypeScript 工程。
-2. 接入 Manifest V3 扩展脚手架（`@crxjs/vite-plugin`，WXT 为备选），配置 popup / content / background / options 多入口。
+2. 接入 Manifest V3 扩展脚手架（`@crxjs/vite-plugin`，WXT 为备选），配置 Side Panel / content / background / options 多入口。
 3. 安装依赖：`react`、`react-dom`、`md-wx`、`@mozilla/readability`、`turndown`、`turndown-plugin-gfm`、`openai`、`@crxjs/vite-plugin`。
 4. 按 `design.md` §5.1 建立 `src/{content, background, panel, shared, config}` 目录骨架与占位入口文件。
-5. 生成 `manifest.json`：声明权限（`activeTab`、`scripting`、`storage`，翻译服务域名 host 权限），popup / content / background / options 入口，占位图标。
-6. popup 最小内容：顶部栏"网页翻译助手" + 空状态占位。
+5. 生成 `manifest.json`：配置 `side_panel.default_path` 与 `options_ui`，声明 `activeTab`、`scripting`、`storage`、`downloads`、`sidePanel` 权限及默认翻译服务 Host 权限 `https://dashscope.aliyuncs.com/*`；不得配置 `action.default_popup`。
+6. Background Service Worker 调用 `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`，使工具栏图标成为 Side Panel 入口。
+7. Side Panel 最小内容：顶部栏“网页翻译助手” + 空状态占位；页面使用 `width: 100%`、`height: 100vh` 的全高单列布局。
 
-**完成标准**：`npm run build` 无错误；`chrome://extensions` 加载 `dist` 后点击图标弹出占位主界面。
+**完成标准**：`npm run build` 无错误；`chrome://extensions` 加载 `dist` 后，点击工具栏图标在浏览器右侧打开全高 Side Panel；`dist/manifest.json` 包含 `side_panel.default_path` 且不包含 `action.default_popup`。
 
-**可见效果**：浏览器工具栏出现扩展图标，点击后弹出占位主界面骨架。
+**可见效果**：浏览器工具栏出现扩展图标，点击后打开占满浏览器可用高度的侧边栏主界面骨架。
 
 **依赖**：无。
 
@@ -90,11 +91,11 @@ P4  T9 错误处理与收尾（依赖全部）
    - 成功结果模块：下载/打开操作条 + 译文渲染区（暂为占位）+ 底部操作条。
    - 失败模块：错误文案区 + 重试按钮。
 3. 简易状态机：用临时按钮/模拟数据在四态间切换（本任务不接真实数据，界面可独立演示）。
-4. 基础样式（单列布局、可滚动渲染区）。
+4. Side Panel 基础样式：全高单列布局、固定顶部栏、主体区域统一纵向滚动；宽度跟随 Chrome 和用户拖动，不设置固定宽高，内容最小宽度为 `320px`。
 
-**完成标准**：四态布局与切换行为符合 `主界面-页面.md`；无控制台错误。
+**完成标准**：四态布局与切换行为符合 `主界面-页面.md`；侧边栏全高展示，调整宽度后标题、按钮、代码和图片无横向溢出；无控制台错误。
 
-**可见效果**：打开 popup 可通过模拟按钮看到四个状态的完整界面。
+**可见效果**：打开 Side Panel 可通过模拟按钮看到四个状态的完整界面，长内容在主体区域连续滚动且顶部栏保持可见。
 
 **依赖**：T1。
 
@@ -193,10 +194,10 @@ P4  T9 错误处理与收尾（依赖全部）
 **实现内容**：
 1. `shared/storage` 封装 `chrome.storage.local` 读写 `lastResult`（标题、作者、原文 URL、最终 Markdown、保存时间）。
 2. 仅翻译成功完成后写入并覆盖；进行中/失败不写入。
-3. 打开 popup 时读取 `lastResult` 并优先展示（对应布局"最近一次结果"）。
+3. 打开 Side Panel 时读取 `lastResult` 并优先展示（对应布局“最近一次结果”）。
 4. 无结果时的空状态展示。
 
-**完成标准**：翻译成功后关闭并重开 popup 仍可看到结果；失败不影响旧结果；无历史列表能力。
+**完成标准**：翻译成功后关闭并重新打开 Side Panel 仍可看到结果；失败不影响旧结果；无历史列表能力。
 
 **可见效果**：关闭再打开插件，上一次翻译结果仍能展示。
 
@@ -218,7 +219,7 @@ P4  T9 错误处理与收尾（依赖全部）
 1. 下载译文为 `.md` 文件（文件名取自文章标题并安全化）。
 2. 下载原文 Markdown 为 `.md` 文件。
 3. "打开原文"按钮在新标签页打开原文 URL。
-4. 按需在 manifest 声明 `downloads` 权限。
+4. 在 Manifest 的 `permissions` 中声明 `downloads` 权限。
 
 **完成标准**：成功模块三个操作均可用，下载文件内容正确。
 
@@ -267,17 +268,17 @@ P4  T9 错误处理与收尾（依赖全部）
 1. 全链路失败展示：失败模块按错误码显示文案（提取失败/认证/限流/网络/空响应）+ 重试。
 2. 失败不覆盖 `lastResult` 的回归验证。
 3. 补充单元/集成测试：提取样例、翻译 mock、存储封装、提示词组装、长度截断。
-4. 手动测试清单（对应 proposal 验收标准 9.1/9.2/9.3）。
-5. 打包检查：图标、权限最小化、隐私说明（密钥本地存储、内容仅用于翻译）。
+4. 按 `docs/验收清单.md` 手工走查 Side Panel 入口与布局、页面提取、翻译展示、持久化、设置页和错误场景。
+5. 打包与权限检查：图标齐全；Manifest 不含 `action.default_popup`，包含 `side_panel.default_path`；权限仅为 `activeTab`、`scripting`、`storage`、`downloads`、`sidePanel`，Host 权限仅为 `https://dashscope.aliyuncs.com/*`；Background Service Worker 入口正确。
 6. README 使用说明：安装方式、加载未打包扩展、配置 API Key、使用流程。
 
-**完成标准**：全流程符合 `proposal.md` 验收标准，失败场景可恢复。
+**完成标准**：`npm run build` 以及 `npm run test:extract`、`npm run test:translate`、`npm run test:mdwx`、`npm run test:storage` 全部通过；将 `dist` 加载到 `chrome://extensions` 后，按 `docs/验收清单.md` 逐项验收通过，失败场景可恢复。
 
-**可见效果**：各失败场景均有清晰提示且可重试；文档可指导使用。
+**可见效果**：点击工具栏图标打开全高 Side Panel；各失败场景均有清晰提示且可重试；文档可指导使用。
 
 **依赖**：全部任务。
 
-**独立验证**：按验收标准逐项手工走查 + 自动化测试通过。
+**独立验证**：检查 `dist/manifest.json` 的 Side Panel 入口、权限与 Host 权限，执行全部自动化验证脚本，并按 `docs/验收清单.md` 在 Chrome 中手工走查。
 
 ## 5. 执行约定
 
