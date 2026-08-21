@@ -135,6 +135,9 @@ const App: React.FC = () => {
       .query({ active: true, currentWindow: true })
       .then((tabs) => {
         const tab = tabs[0];
+        // #region debug-point A:initial-active-tab
+        void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'A', location: 'src/panel/App.tsx:initial-tab-query', msg: '[DEBUG] Side Panel 初次查询活动标签页', data: { count: tabs.length, id: tab?.id, url: tab?.url, pendingUrl: tab?.pendingUrl, title: tab?.title, windowId: tab?.windowId }, ts: Date.now() }) }).catch(() => {});
+        // #endregion
         if (!tab) {
           return;
         }
@@ -166,6 +169,9 @@ const App: React.FC = () => {
       return (await chrome.tabs.sendMessage(tabId, request)) as ExtractArticleResponse | undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // #region debug-point C:content-message-failure
+      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'C', location: 'src/panel/App.tsx:sendExtractRequest', msg: '[DEBUG] 向内容脚本发送提取请求失败', data: { tabId, allowInjection, message }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       const missingReceiver = /Receiving end does not exist|Could not establish connection/i.test(message);
       if (!allowInjection || !missingReceiver) {
         throw error;
@@ -184,11 +190,17 @@ const App: React.FC = () => {
   const requestExtract = useCallback(async (): Promise<ExtractedArticle> => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs[0];
+    // #region debug-point A:extract-active-tab
+    void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'A', location: 'src/panel/App.tsx:requestExtract', msg: '[DEBUG] 翻译前查询活动标签页', data: { count: tabs.length, id: tab?.id, url: tab?.url, pendingUrl: tab?.pendingUrl, title: tab?.title, windowId: tab?.windowId }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
     if (!tab?.id) {
       throw { code: 'EXTRACT_FAILED', message: '未找到可提取的活动标签页。' } satisfies ExtractError;
     }
     const url = (tab.url || tab.pendingUrl || '').trim();
     if (!/^https?:\/\//i.test(url)) {
+      // #region debug-point B:restricted-url-branch
+      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'active-tab-detection', runId: 'post-fix', hypothesisId: 'B', location: 'src/panel/App.tsx:restricted-url-branch', msg: '[DEBUG] 活动标签页被判定为受限页面', data: { id: tab.id, url, rawUrl: tab.url, pendingUrl: tab.pendingUrl }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       throw {
         code: 'EXTRACT_FAILED',
         message: '当前页面属于浏览器受限页面，请打开普通网页后重试。',

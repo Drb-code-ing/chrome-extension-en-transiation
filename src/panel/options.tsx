@@ -49,6 +49,11 @@ interface TestResult {
   text: string;
 }
 
+interface ActionNotice {
+  kind: 'success' | 'error';
+  text: string;
+}
+
 const Options: React.FC = () => {
   const [form, setForm] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
@@ -56,7 +61,8 @@ const Options: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [modelNotice, setModelNotice] = useState<ActionNotice | null>(null);
+  const [dataNotice, setDataNotice] = useState<ActionNotice | null>(null);
 
   // 载入已保存设置。
   useEffect(() => {
@@ -69,12 +75,15 @@ const Options: React.FC = () => {
   /** 更新某个表单项。 */
   const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]): void => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setTestResult(null);
+    setModelNotice(null);
   };
 
   /** 用当前候选配置向后台发起测试连接。 */
   const handleTest = async (): Promise<void> => {
     setTesting(true);
     setTestResult(null);
+    setModelNotice(null);
     const request: TestConnectionRequest = {
       type: MESSAGE_TYPES.testConnection,
       baseUrl: form.baseUrl.trim(),
@@ -103,7 +112,7 @@ const Options: React.FC = () => {
   /** 保存设置。 */
   const handleSave = async (): Promise<void> => {
     setSaving(true);
-    setNotice(null);
+    setModelNotice(null);
     const next: AppSettings = {
       ...form,
       baseUrl: form.baseUrl.trim(),
@@ -112,10 +121,12 @@ const Options: React.FC = () => {
     try {
       await saveSettings(next);
       setForm(next);
-      setNotice('设置已保存。');
-      window.setTimeout(() => setNotice(null), 2500);
+      setModelNotice({ kind: 'success', text: '设置已保存，可立即返回侧边栏使用。' });
     } catch (error) {
-      setNotice(error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试。');
+      setModelNotice({
+        kind: 'error',
+        text: error instanceof Error ? `保存失败：${error.message}` : '保存失败，请重试。',
+      });
     } finally {
       setSaving(false);
     }
@@ -126,13 +137,15 @@ const Options: React.FC = () => {
     if (!window.confirm('确定要清空最近一次翻译结果吗？')) {
       return;
     }
-    setNotice(null);
+    setDataNotice(null);
     try {
       await clearLastResult();
-      setNotice('最近一次翻译结果已清空。');
-      window.setTimeout(() => setNotice(null), 2500);
+      setDataNotice({ kind: 'success', text: '最近一次翻译结果已清空。' });
     } catch (error) {
-      setNotice(error instanceof Error ? `清空失败：${error.message}` : '清空失败，请重试。');
+      setDataNotice({
+        kind: 'error',
+        text: error instanceof Error ? `清空失败：${error.message}` : '清空失败，请重试。',
+      });
     }
   };
 
@@ -228,18 +241,21 @@ const Options: React.FC = () => {
             disabled={testing || saving}
             aria-busy={saving}
           >
-            {saving ? '保存中…' : '保存设置'}
+            {saving ? '保存中…' : modelNotice?.kind === 'success' ? '✓ 已保存' : '保存设置'}
           </button>
         </div>
-        {testResult && (
-          <p
-            className={testResult.ok ? 'opt-feedback opt-feedback--ok' : 'opt-feedback opt-feedback--err'}
-            role={testResult.ok ? 'status' : 'alert'}
-            aria-live={testResult.ok ? 'polite' : 'assertive'}
-          >
-            {testResult.text}
-          </p>
-        )}
+        <div className="opt-feedback-slot" aria-live="polite">
+          {(testResult || modelNotice) && (
+            <p
+              className={(testResult?.ok ?? modelNotice?.kind === 'success')
+                ? 'opt-feedback opt-feedback--ok'
+                : 'opt-feedback opt-feedback--err'}
+              role={(testResult?.ok ?? modelNotice?.kind === 'success') ? 'status' : 'alert'}
+            >
+              {testResult?.text ?? modelNotice?.text}
+            </p>
+          )}
+        </div>
       </section>
 
       {/* ---- 展示偏好模块 ---- */}
@@ -301,21 +317,23 @@ const Options: React.FC = () => {
             清空最近一次结果
           </button>
         </div>
+        <div className="opt-feedback-slot" aria-live="polite">
+          {dataNotice && (
+            <p
+              className={dataNotice.kind === 'success'
+                ? 'opt-feedback opt-feedback--ok'
+                : 'opt-feedback opt-feedback--err'}
+              role={dataNotice.kind === 'success' ? 'status' : 'alert'}
+            >
+              {dataNotice.text}
+            </p>
+          )}
+        </div>
         <div className="opt-about">
           <p>Chrome 网页 AI 翻译插件 · v0.1.0</p>
           <p>正文由 Readability 提取，翻译调用 OpenAI 兼容接口（默认 Qwen），结果由 md-wx 渲染。</p>
         </div>
       </section>
-
-      {notice && (
-        <p
-          className={notice.includes('失败') ? 'opt-notice opt-notice--error' : 'opt-notice'}
-          role={notice.includes('失败') ? 'alert' : 'status'}
-          aria-live={notice.includes('失败') ? 'assertive' : 'polite'}
-        >
-          {notice}
-        </p>
-      )}
     </main>
   );
 };

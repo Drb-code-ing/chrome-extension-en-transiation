@@ -1,0 +1,3 @@
+{"type":"click","text":"A. 原位反馈按钮文字变化，结果直接插入按钮下方。改动最少，但结果出现/消失会推动下方内容。服务基地址https://dashscope.aliyuncs.com/...测试连接保存中设置已保存。展示主题：minimal缺点：反馈区域动态增删，仍可能产生纵向跳动。","choice":"a","id":null,"timestamp":1787309065551}
+{"type":"click","text":"A. 原位反馈按钮文字变化，结果直接插入按钮下方。改动最少，但结果出现/消失会推动下方内容。服务基地址https://dashscope.aliyuncs.com/...测试连接保存中设置已保存。展示主题：minimal缺点：反馈区域动态增删，仍可能产生纵向跳动。","choice":"a","id":null,"timestamp":1787309066348}
+{"type":"click","text":"B. 稳定反馈区（推荐）按钮有按压/加载状态，模块底部预留固定反馈高度；成功或错误都不改变页面结构。服务基地址https://dashscope.aliyuncs.com/...测试连接✓ 已保存设置已保存，可立即返回侧边栏使用。展示主题：minimal优点：零布局位移，状态离操作位置近，反馈最清楚。","choice":"b","id":null,"timestamp":1787309070467}
