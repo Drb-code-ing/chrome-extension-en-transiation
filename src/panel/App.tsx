@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MarkdownRenderer } from 'md-wx';
 import 'md-wx/dist/style.css';
 import {
@@ -25,13 +25,6 @@ import type {
 import { useThrottledMarkdown } from './hooks/useThrottledMarkdown.ts';
 
 type ViewState = 'idle' | 'translating' | 'success' | 'error';
-
-const VIEW_LABELS: Record<ViewState, string> = {
-  idle: '初始',
-  translating: '翻译中',
-  success: '成功',
-  error: '失败',
-};
 
 interface TabInfo {
   title: string;
@@ -116,6 +109,8 @@ const App: React.FC = () => {
   // ---- 翻译（T4）----
   const translate = useThrottledMarkdown(200);
   const [translateError, setTranslateError] = useState<TranslateError | null>(null);
+  const translatingRef = useRef(false);
+  const activePortRef = useRef<chrome.runtime.Port | null>(null);
 
   // ---- 最近一次结果持久化（T6）----
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
@@ -124,6 +119,16 @@ const App: React.FC = () => {
   const mdTheme = settings?.theme ?? 'minimal';
   const mdFollowSystem = settings?.followSystemTheme ?? true;
   const mdViewMode = settings?.viewMode ?? 'mobile';
+
+  // 弹窗关闭时断开仍在运行的翻译端口，避免后台任务悬挂。
+  useEffect(
+    () => () => {
+      activePortRef.current?.disconnect();
+      activePortRef.current = null;
+      translatingRef.current = false;
+    },
+    [],
+  );
 
   // 初次打开：读取活动标签页信息与本地设置。
   useEffect(() => {
@@ -152,25 +157,53 @@ const App: React.FC = () => {
       .catch(() => setSettings(null));
   }, []);
 
+  /** 向指定标签页请求文章；内容脚本未注入时补充注入并重试一次。 */
+  const sendExtractRequest = useCallback(async (
+    tabId: number,
+    allowInjection: boolean,
+  ): Promise<ExtractArticleResponse | undefined> => {
+    const request: ExtractArticleRequest = { type: MESSAGE_TYPES.extractArticle };
+    try {
+      return (await chrome.tabs.sendMessage(tabId, request)) as ExtractArticleResponse | undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const missingReceiver = /Receiving end does not exist|Could not establish connection/i.test(message);
+      if (!allowInjection || !missingReceiver) {
+        throw error;
+      }
+      const manifest = chrome.runtime.getManifest();
+      const files = manifest.content_scripts?.flatMap((script) => script.js ?? []) ?? [];
+      if (files.length === 0) {
+        throw error;
+      }
+      await chrome.scripting.executeScript({ target: { tabId }, files });
+      return (await chrome.tabs.sendMessage(tabId, request)) as ExtractArticleResponse | undefined;
+    }
+  }, []);
+
   /** 向当前活动标签页请求提取文章，返回文章对象。 */
   const requestExtract = useCallback(async (): Promise<ExtractedArticle> => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs[0];
     if (!tab?.id) {
-      throw new Error('未找到可提取的活动标签页');
+      throw { code: 'EXTRACT_FAILED', message: '未找到可提取的活动标签页。' } satisfies ExtractError;
     }
-    const request: ExtractArticleRequest = { type: MESSAGE_TYPES.extractArticle };
-    const response = (await chrome.tabs.sendMessage(tab.id, request)) as
-      | ExtractArticleResponse
-      | undefined;
+    const url = (tab.url || tab.pendingUrl || '').trim();
+    if (!/^https?:\/\//i.test(url)) {
+      throw {
+        code: 'EXTRACT_FAILED',
+        message: '当前页面属于浏览器受限页面，请打开普通网页后重试。',
+      } satisfies ExtractError;
+    }
+    const response = await sendExtractRequest(tab.id, true);
     if (!response) {
-      throw new Error('未收到页面响应，请确认页面已加载完成');
+      throw { code: 'EXTRACT_FAILED', message: '未收到页面响应，请刷新网页后重试。' } satisfies ExtractError;
     }
     if (!response.ok) {
       throw response.error;
     }
     return response.article;
-  }, []);
+  }, [sendExtractRequest]);
 
   // 提取预览（T3）。
   const handleExtract = useCallback(async () => {
@@ -202,17 +235,32 @@ const App: React.FC = () => {
 
   // 一键翻译：提取请求后经端口发起流式翻译，逐块追加展示。
   const handleTranslate = useCallback(async () => {
+    if (translatingRef.current) {
+      return;
+    }
+    translatingRef.current = true;
     setTranslateError(null);
     translate.reset();
     setViewState('translating');
     try {
       if (!settings?.apiKey) {
-        throw { code: 'AUTH_FAILED', message: '尚未配置 API Key，请回到初始页填写后再试。' } satisfies TranslateError;
+        throw { code: 'AUTH_FAILED', message: '尚未配置 API Key，请先在设置页填写并保存。' } satisfies TranslateError;
       }
       const article = await requestExtract();
       setCurrentArticle(article);
       const requestId = crypto.randomUUID();
       const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
+      // #region debug-point A:panel-connect
+      void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'A,D,E', location: 'App.tsx:connect', msg: '[DEBUG] 面板已创建翻译端口', data: { portName: port.name, requestId }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
+      activePortRef.current = port;
+      let settled = false;
+
+      const finish = (): void => {
+        settled = true;
+        translatingRef.current = false;
+        activePortRef.current = null;
+      };
 
       port.onMessage.addListener((message: unknown) => {
         if (!message || typeof message !== 'object') {
@@ -222,6 +270,7 @@ const App: React.FC = () => {
         if (msg.type === MESSAGE_TYPES.translateDelta && msg.requestId === requestId) {
           translate.push(msg.delta);
         } else if (msg.type === MESSAGE_TYPES.translateDone && msg.requestId === requestId) {
+          finish();
           translate.commitNow();
           // 仅成功完成后写入最近一次结果并覆盖旧值（T6）。
           const result: LastResult = {
@@ -236,9 +285,21 @@ const App: React.FC = () => {
           setViewState('success');
           port.disconnect();
         } else if (msg.type === MESSAGE_TYPES.translateError && msg.requestId === requestId) {
+          finish();
           setTranslateError(msg.error);
           setViewState('error');
           port.disconnect();
+        }
+      });
+      port.onDisconnect.addListener(() => {
+        // #region debug-point A,D:panel-disconnect
+        void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'translation-port-disconnect', runId: 'pre-fix', hypothesisId: 'A,D', location: 'App.tsx:onDisconnect', msg: '[DEBUG] 面板翻译端口断开', data: { settled, lastError: chrome.runtime.lastError?.message ?? null }, ts: Date.now() }) }).catch(() => {});
+        // #endregion
+        activePortRef.current = null;
+        translatingRef.current = false;
+        if (!settled) {
+          setTranslateError({ code: 'NETWORK_ERROR', message: '翻译连接意外断开，请返回后重试。' });
+          setViewState('error');
         }
       });
 
@@ -252,6 +313,8 @@ const App: React.FC = () => {
       };
       port.postMessage(start);
     } catch (error) {
+      translatingRef.current = false;
+      activePortRef.current = null;
       setTranslateError(toTranslateError(error));
       setViewState('error');
     }
@@ -533,25 +596,6 @@ const App: React.FC = () => {
         <button type="button" className="icon-button" aria-label="打开设置" onClick={() => void chrome.runtime.openOptionsPage()}>⚙</button>
       </header>
       <main className="popup__body">{previewOpen ? renderPreview() : renderContent()}</main>
-      <nav className="demo-switcher" aria-label="界面状态模拟切换">
-        <span>演示状态</span>
-        <div className="demo-switcher__controls">
-          {(Object.keys(VIEW_LABELS) as ViewState[]).map((state) => (
-            <button
-              type="button"
-              key={state}
-              className={viewState === state ? 'is-active' : ''}
-              onClick={() => {
-                setPreviewOpen(false);
-                setTranslateError(null);
-                setViewState(state);
-              }}
-            >
-              {VIEW_LABELS[state]}
-            </button>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 };

@@ -8,7 +8,11 @@ import type { AppSettings, TranslateError } from '../../shared/types/index.ts';
 
 /** 依据配置创建 OpenAI 兼容客户端。 */
 export function createOpenAIClient(settings: AppSettings): OpenAI {
-  return new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseUrl });
+  return new OpenAI({
+    apiKey: settings.apiKey,
+    baseURL: settings.baseUrl,
+    dangerouslyAllowBrowser: true,
+  });
 }
 
 /**

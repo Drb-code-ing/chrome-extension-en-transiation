@@ -22,7 +22,7 @@ export default defineManifest({
     '128': 'icons/icon128.png',
   },
   background: {
-    service_worker: 'src/background/index.ts',
+    service_worker: 'src/background/service-worker.ts',
     type: 'module',
   },
   content_scripts: [
@@ -37,5 +37,5 @@ export default defineManifest({
     open_in_tab: true,
   },
   permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
-  host_permissions: ['https://dashscope.aliyuncs.com/*'],
+  host_permissions: ['https://dashscope.aliyuncs.com/*', 'http://127.0.0.1/*'],
 });

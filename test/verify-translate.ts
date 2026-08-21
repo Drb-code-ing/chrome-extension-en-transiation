@@ -201,7 +201,7 @@ async function run(): Promise<void> {
     assert.ok(user.includes('https://example.com/article'), '用户消息应包含原文链接');
     assert.ok(user.includes('正文首段'), '用户消息应包含正文');
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-    res.end('data: [DONE]\n\n');
+    res.end(sseChunkStream(['验证完成'], 'qwen-plus'));
   });
   for await (const _ of translateStream({
     settings: { ...settings, baseUrl: captureServer.baseUrl },
