@@ -120,6 +120,11 @@ const App: React.FC = () => {
   // ---- 最近一次结果持久化（T6）----
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
 
+  // ---- 渲染偏好（T8：由设置页读取，缺省为默认值）----
+  const mdTheme = settings?.theme ?? 'minimal';
+  const mdFollowSystem = settings?.followSystemTheme ?? true;
+  const mdViewMode = settings?.viewMode ?? 'mobile';
+
   // 初次打开：读取活动标签页信息与本地设置。
   useEffect(() => {
     chrome.tabs
@@ -322,12 +327,13 @@ const App: React.FC = () => {
         <div className="translation-preview last-result-body">
           <MarkdownRenderer
             markdown={lastResult.translatedMarkdown}
-            theme="minimal"
+            theme={mdTheme}
             showSettings={false}
             enableCopy={false}
             enableThemeSwitch={false}
             enableViewModeToggle={false}
-            followSystemTheme
+            defaultViewMode={mdViewMode}
+            followSystemTheme={mdFollowSystem}
             className="md-wx-wrap"
           />
         </div>
@@ -359,12 +365,13 @@ const App: React.FC = () => {
                 <>
                   <MarkdownRenderer
                     markdown={translate.text}
-                    theme="minimal"
+                    theme={mdTheme}
                     showSettings={false}
                     enableCopy={false}
                     enableThemeSwitch={false}
                     enableViewModeToggle={false}
-                    followSystemTheme
+                    defaultViewMode={mdViewMode}
+                    followSystemTheme={mdFollowSystem}
                     className="md-wx-wrap"
                   />
                   <span className="typing-caret" aria-hidden="true" />
@@ -412,12 +419,13 @@ const App: React.FC = () => {
             <div className="translation-preview translation-preview--complete">
               <MarkdownRenderer
                 markdown={translate.text}
-                theme="minimal"
+                theme={mdTheme}
                 showSettings={false}
                 enableCopy={false}
                 enableThemeSwitch={false}
                 enableViewModeToggle={false}
-                followSystemTheme
+                defaultViewMode={mdViewMode}
+                followSystemTheme={mdFollowSystem}
                 className="md-wx-wrap"
               />
             </div>
@@ -518,7 +526,7 @@ const App: React.FC = () => {
           <span className="brand__mark" aria-hidden="true">译</span>
           <span className="popup__title">网页翻译助手</span>
         </div>
-        <button type="button" className="icon-button" aria-label="打开设置" title="设置功能将在 T8 接通">⚙</button>
+        <button type="button" className="icon-button" aria-label="打开设置" onClick={() => void chrome.runtime.openOptionsPage()}>⚙</button>
       </header>
       <main className="popup__body">{previewOpen ? renderPreview() : renderContent()}</main>
       <nav className="demo-switcher" aria-label="界面状态模拟切换">

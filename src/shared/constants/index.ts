@@ -16,12 +16,28 @@ export const DEFAULT_TEMPERATURE = 0.3;
 /** 送入模型的最大字符数，超长文章在此边界截断。 */
 export const MAX_INPUT_CHARS = 12000;
 
+/** 可选模型列表（设置页下拉）。 */
+export const MODEL_OPTIONS = ['qwen-turbo', 'qwen-plus', 'qwen-max'] as const;
+
+/** 可选 md-wx 渲染主题列表（设置页下拉）。 */
+export const THEME_OPTIONS = ['minimal', 'sakura', 'forest', 'ocean', 'sunset'] as const;
+
+/** 可选默认视图模式列表（设置页单选）。 */
+export const VIEW_MODE_OPTIONS = ['mobile', 'tablet', 'desktop'] as const;
+
+/** 温度滑杆的取值边界。 */
+export const TEMPERATURE_MIN = 0;
+export const TEMPERATURE_MAX = 1;
+
 /** 默认设置（apiKey 为空，由用户在设置页或临时输入填充）。 */
 export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: DEFAULT_BASE_URL,
   apiKey: '',
   model: DEFAULT_MODEL,
   temperature: DEFAULT_TEMPERATURE,
+  theme: 'minimal',
+  followSystemTheme: true,
+  viewMode: 'mobile',
 };
 
 /** 翻译 System 提示词：规定输出格式、结构与图片保留规则。 */

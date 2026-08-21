@@ -52,6 +52,12 @@ export interface LastResult {
   savedAt: number;
 }
 
+/** md-wx 渲染主题（与 md-wx 的 ThemeType 取值一致）。 */
+export type ThemeType = 'minimal' | 'sakura' | 'forest' | 'ocean' | 'sunset';
+
+/** md-wx 视图模式（与 md-wx 的 ViewMode 取值一致）。 */
+export type ViewMode = 'mobile' | 'tablet' | 'desktop';
+
 /** 用户可配置的翻译设置（存储于 chrome.storage.local）。 */
 export interface AppSettings {
   /** OpenAI 兼容服务基地址。 */
@@ -62,4 +68,10 @@ export interface AppSettings {
   model: string;
   /** 采样温度。 */
   temperature: number;
+  /** md-wx 渲染主题。 */
+  theme: ThemeType;
+  /** 是否跟随系统亮暗主题。 */
+  followSystemTheme: boolean;
+  /** 译文的默认视图模式。 */
+  viewMode: ViewMode;
 }

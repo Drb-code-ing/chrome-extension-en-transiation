@@ -17,6 +17,8 @@ export const MESSAGE_TYPES = {
   translateDone: 'TRANSLATE_DONE',
   /** 后台通知翻译失败。 */
   translateError: 'TRANSLATE_ERROR',
+  /** 面板请求测试连接（设置页）。 */
+  testConnection: 'TEST_CONNECTION',
 } as const;
 
 /** 面板 → 后台用于流式翻译的长连接端口名。 */
@@ -109,5 +111,41 @@ export function isTranslateStartRequest(value: unknown): value is TranslateStart
     typeof value === 'object' &&
     value !== null &&
     (value as { type?: unknown }).type === MESSAGE_TYPES.translateStart
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 测试连接消息（设置页到后台，单次请求-响应）
+// ---------------------------------------------------------------------------
+
+/** 面板发起的"测试连接"请求载荷（携带候选配置，无需先保存）。 */
+export interface TestConnectionRequest {
+  type: typeof MESSAGE_TYPES.testConnection;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+/** "测试连接"成功响应。 */
+export interface TestConnectionSuccessResponse {
+  ok: true;
+  message: string;
+}
+
+/** "测试连接"失败响应。 */
+export interface TestConnectionErrorResponse {
+  ok: false;
+  error: TranslateError;
+}
+
+/** "测试连接"响应联合类型。 */
+export type TestConnectionResponse = TestConnectionSuccessResponse | TestConnectionErrorResponse;
+
+/** 判断消息是否为"测试连接"请求。 */
+export function isTestConnectionRequest(value: unknown): value is TestConnectionRequest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === MESSAGE_TYPES.testConnection
   );
 }
